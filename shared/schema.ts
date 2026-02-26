@@ -3,6 +3,9 @@ import { pgTable, text, varchar, primaryKey, serial, integer, timestamp, numeric
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Re-exportar schemas modulares criados pelo Dev Center
+export * from "./schemas/index";
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
@@ -832,6 +835,14 @@ export type TenantFeatures = {
   biblioteca: boolean;
   bibliotecaPublish: boolean;
   suporteN3: boolean;
+  retail: boolean;
+  plus: boolean;
+  fisco: boolean;
+  cockpit: boolean;
+  compass: boolean;
+  production: boolean;
+  support: boolean;
+  xosCrm: boolean;
 };
 
 // Tenants (Master/Parceiros/Clientes)
@@ -863,6 +874,49 @@ export const tenants = pgTable("tenants", {
   // Contato comercial
   commercialContact: text("commercial_contact"),
   commercialPhone: text("commercial_phone"),
+  // Dados empresariais (unificado com CRM)
+  cnpj: text("cnpj"),
+  tradeName: text("trade_name"),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  segment: text("segment"),
+  notes: text("notes"),
+  source: text("source"),
+});
+
+// Empresas do Tenant (Matriz + Filiais)
+export const tenantEmpresas = pgTable("tenant_empresas", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  razaoSocial: text("razao_social").notNull(),
+  nomeFantasia: text("nome_fantasia"),
+  cnpj: text("cnpj").notNull(),
+  ie: text("ie"),
+  im: text("im"),
+  email: text("email"),
+  phone: text("phone"),
+  tipo: text("tipo").default("filial"), // matriz, filial
+  status: text("status").default("active"), // active, inactive
+  cep: text("cep"),
+  logradouro: text("logradouro"),
+  numero: text("numero"),
+  complemento: text("complemento"),
+  bairro: text("bairro"),
+  cidade: text("cidade"),
+  uf: text("uf"),
+  codigoIbge: text("codigo_ibge"),
+  // Fiscal
+  regimeTributario: text("regime_tributario"), // simples, presumido, real
+  certificadoDigitalId: integer("certificado_digital_id"),
+  ambienteFiscal: text("ambiente_fiscal").default("homologacao"), // producao, homologacao
+  serieNfe: integer("serie_nfe").default(1),
+  serieNfce: integer("serie_nfce").default(1),
+  // Plus ERP link
+  plusEmpresaId: integer("plus_empresa_id"),
+  // Metadata
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 // Tenant Users (Membership)
@@ -927,6 +981,7 @@ export const insertTenantUserSchema = createInsertSchema(tenantUsers).omit({ id:
 export const insertTenantPlanSchema = createInsertSchema(tenantPlans).omit({ id: true, createdAt: true });
 export const insertPartnerClientSchema = createInsertSchema(partnerClients).omit({ id: true, startedAt: true });
 export const insertPartnerCommissionSchema = createInsertSchema(partnerCommissions).omit({ id: true, createdAt: true });
+export const insertTenantEmpresaSchema = createInsertSchema(tenantEmpresas).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type Tenant = typeof tenants.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
@@ -938,6 +993,8 @@ export type PartnerClient = typeof partnerClients.$inferSelect;
 export type InsertPartnerClient = z.infer<typeof insertPartnerClientSchema>;
 export type PartnerCommission = typeof partnerCommissions.$inferSelect;
 export type InsertPartnerCommission = z.infer<typeof insertPartnerCommissionSchema>;
+export type TenantEmpresa = typeof tenantEmpresas.$inferSelect;
+export type InsertTenantEmpresa = z.infer<typeof insertTenantEmpresaSchema>;
 
 // ==========================================
 // PROCESS COMPASS - CONSULTING BACK-OFFICE
@@ -5078,6 +5135,7 @@ export const serviceOrders = pgTable("service_orders", {
 export const serviceOrderItems = pgTable("service_order_items", {
   id: serial("id").primaryKey(),
   serviceOrderId: integer("service_order_id").references(() => serviceOrders.id).notNull(),
+  productId: integer("product_id").references(() => products.id),
   itemType: varchar("item_type", { length: 20 }).default("part"), // part, labor, accessory
   itemCode: varchar("item_code", { length: 50 }),
   itemName: varchar("item_name", { length: 200 }).notNull(),
@@ -5137,6 +5195,12 @@ export const posSales = pgTable("pos_sales", {
   status: varchar("status", { length: 20 }).default("completed"), // pending, completed, cancelled, refunded
   soldBy: varchar("sold_by"),
   notes: text("notes"),
+  plusVendaId: integer("plus_venda_id"),
+  plusNfeChave: varchar("plus_nfe_chave", { length: 60 }),
+  plusSyncStatus: varchar("plus_sync_status", { length: 20 }).default("pending"), // pending, synced, error, not_applicable
+  plusSyncError: text("plus_sync_error"),
+  plusSyncedAt: timestamp("plus_synced_at"),
+  empresaId: integer("empresa_id").references(() => tenantEmpresas.id),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
@@ -5900,6 +5964,51 @@ export const insertTradeInTransferDocumentSchema = createInsertSchema(tradeInTra
 export type TradeInTransferDocument = typeof tradeInTransferDocuments.$inferSelect;
 export type InsertTradeInTransferDocument = z.infer<typeof insertTradeInTransferDocumentSchema>;
 
+// POS Cash Movements - Sangria e Reforço de Caixa
+export const posCashMovements = pgTable("pos_cash_movements", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  sessionId: integer("session_id").references(() => posSessions.id).notNull(),
+  storeId: integer("store_id").references(() => retailStores.id).notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // withdrawal (sangria), reinforcement (reforço)
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  reason: text("reason"),
+  performedBy: varchar("performed_by"),
+  performedByName: varchar("performed_by_name", { length: 200 }),
+  authorizedBy: varchar("authorized_by"),
+  authorizedByName: varchar("authorized_by_name", { length: 200 }),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertPosCashMovementSchema = createInsertSchema(posCashMovements).omit({ id: true, createdAt: true });
+export type PosCashMovement = typeof posCashMovements.$inferSelect;
+export type InsertPosCashMovement = z.infer<typeof insertPosCashMovementSchema>;
+
+// Service Warranties - Garantias de Serviço vinculadas à OS e IMEI
+export const serviceWarranties = pgTable("service_warranties", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  storeId: integer("store_id").references(() => retailStores.id),
+  serviceOrderId: integer("service_order_id").references(() => serviceOrders.id).notNull(),
+  deviceId: integer("device_id").references(() => mobileDevices.id),
+  imei: varchar("imei", { length: 20 }),
+  serviceType: varchar("service_type", { length: 50 }).notNull(),
+  warrantyDays: integer("warranty_days").notNull(),
+  startDate: date("start_date").notNull(),
+  endDate: date("end_date").notNull(),
+  customerName: varchar("customer_name", { length: 200 }),
+  customerPhone: varchar("customer_phone", { length: 20 }),
+  description: text("description"),
+  status: varchar("status", { length: 20 }).default("active"), // active, expired, claimed, voided
+  claimedAt: timestamp("claimed_at"),
+  claimNotes: text("claim_notes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertServiceWarrantySchema = createInsertSchema(serviceWarranties).omit({ id: true, createdAt: true });
+export type ServiceWarranty = typeof serviceWarranties.$inferSelect;
+export type InsertServiceWarranty = z.infer<typeof insertServiceWarrantySchema>;
+
 // Customer Credits - Créditos de Cliente (Trade-In, Devoluções, etc.)
 export const customerCredits = pgTable("customer_credits", {
   id: serial("id").primaryKey(),
@@ -5956,6 +6065,9 @@ export const persons = pgTable("persons", {
   erpnextCustomerId: varchar("erpnext_customer_id", { length: 140 }),
   erpnextSupplierId: varchar("erpnext_supplier_id", { length: 140 }),
   erpnextEmployeeId: varchar("erpnext_employee_id", { length: 140 }),
+  // Plus Sync Fields
+  plusClienteId: integer("plus_cliente_id"),
+  plusFornecedorId: integer("plus_fornecedor_id"),
   lastSyncAt: timestamp("last_sync_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),

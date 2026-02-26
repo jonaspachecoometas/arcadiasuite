@@ -1,74 +1,89 @@
 import { Switch, Route } from "wouter";
+import { lazy, Suspense } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/hooks/use-auth";
-import { ErpProfileProvider } from "@/contexts/ErpProfileContext";
+import { SoeMotorProvider } from "@/contexts/SoeMotorContext";
 import { ProtectedRoute } from "@/lib/protected-route";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KnowledgeCollectorInit } from "@/components/KnowledgeCollectorInit";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
-import Agent from "@/pages/Agent";
-import Admin from "@/pages/Admin";
-import Chat from "@/pages/Chat";
-import WhatsApp from "@/pages/WhatsApp";
-import Automations from "@/pages/Automations";
-import BiWorkspace from "@/pages/BiWorkspace";
-import ProcessCompass from "@/pages/ProcessCompass";
-import WorkspacePage from "@/pages/WorkspacePage";
-import AppViewer from "@/pages/AppViewer";
-import Crm from "@/pages/Crm";
-import Production from "@/pages/Production";
-import Support from "@/pages/Support";
-import Valuation from "@/pages/Valuation";
-import Canvas from "@/pages/Canvas";
-import IDE from "@/pages/IDE";
-import Scientist from "@/pages/Scientist";
-import Knowledge from "@/pages/Knowledge";
-import CentralApis from "@/pages/CentralApis";
-import ApiTesterPage from "@/pages/ApiTesterPage";
-import ApiHub from "@/pages/ApiHub";
-import Cockpit from "@/pages/Cockpit";
-import Fisco from "@/pages/Fisco";
-import People from "@/pages/People";
-import Contabil from "@/pages/Contabil";
-import ERP from "@/pages/ERP";
-import Financeiro from "@/pages/Financeiro";
-import Communities from "@/pages/Communities";
-import ArcadiaNext from "@/pages/ArcadiaNext";
-import QualityModule from "@/pages/QualityModule";
-import CommercialEnv from "@/pages/CommercialEnv";
-import FieldOperations from "@/pages/FieldOperations";
-import TechnicalModule from "@/pages/TechnicalModule";
-import SuppliersPortal from "@/pages/SuppliersPortal";
-import NPSSurvey from "@/pages/NPSSurvey";
-import EngineeringHub from "@/pages/EngineeringHub";
-import DocTypeBuilder from "@/pages/DocTypeBuilder";
-import PageBuilder from "@/pages/PageBuilder";
-import DevelopmentModule from "@/pages/DevelopmentModule";
-import ArcadiaRetail from "@/pages/ArcadiaRetail";
-import Plus from "@/pages/Plus";
-import SuperAdmin from "@/pages/SuperAdmin";
-import Marketplace from "@/pages/Marketplace";
-import LMS from "@/pages/LMS";
-import AppCenter from "@/pages/AppCenter";
-import XosCentral from "@/pages/XosCentral";
-import XosCrm from "@/pages/XosCrm";
-import XosInbox from "@/pages/XosInbox";
-import XosTickets from "@/pages/XosTickets";
-import Migration from "@/pages/Migration";
-import DevCenter from "@/pages/DevCenter";
-import XosCampaigns from "@/pages/XosCampaigns";
-import XosAutomations from "@/pages/XosAutomations";
-import XosSites from "@/pages/XosSites";
-import XosGovernance from "@/pages/XosGovernance";
-import XosPipeline from "@/pages/XosPipeline";
 
+const Agent = lazy(() => import("@/pages/Agent"));
+const Admin = lazy(() => import("@/pages/Admin"));
+const Chat = lazy(() => import("@/pages/Chat"));
+const WhatsApp = lazy(() => import("@/pages/WhatsApp"));
+const Automations = lazy(() => import("@/pages/Automations"));
+const BiWorkspace = lazy(() => import("@/pages/BiWorkspace"));
+const ProcessCompass = lazy(() => import("@/pages/ProcessCompass"));
+const WorkspacePage = lazy(() => import("@/pages/WorkspacePage"));
+const AppViewer = lazy(() => import("@/pages/AppViewer"));
+const Crm = lazy(() => import("@/pages/Crm"));
+const Production = lazy(() => import("@/pages/Production"));
+const Support = lazy(() => import("@/pages/Support"));
+const Valuation = lazy(() => import("@/pages/Valuation"));
+const Canvas = lazy(() => import("@/pages/Canvas"));
+const IDE = lazy(() => import("@/pages/IDE"));
+const Scientist = lazy(() => import("@/pages/Scientist"));
+const Knowledge = lazy(() => import("@/pages/Knowledge"));
+const CentralApis = lazy(() => import("@/pages/CentralApis"));
+const ApiTesterPage = lazy(() => import("@/pages/ApiTesterPage"));
+const ApiHub = lazy(() => import("@/pages/ApiHub"));
+const Cockpit = lazy(() => import("@/pages/Cockpit"));
+const Fisco = lazy(() => import("@/pages/Fisco"));
+const People = lazy(() => import("@/pages/People"));
+const Contabil = lazy(() => import("@/pages/Contabil"));
+const SOE = lazy(() => import("@/pages/SOE"));
+const Financeiro = lazy(() => import("@/pages/Financeiro"));
+const Communities = lazy(() => import("@/pages/Communities"));
+const ArcadiaNext = lazy(() => import("@/pages/ArcadiaNext"));
+const QualityModule = lazy(() => import("@/pages/QualityModule"));
+const CommercialEnv = lazy(() => import("@/pages/CommercialEnv"));
+const FieldOperations = lazy(() => import("@/pages/FieldOperations"));
+const TechnicalModule = lazy(() => import("@/pages/TechnicalModule"));
+const SuppliersPortal = lazy(() => import("@/pages/SuppliersPortal"));
+const NPSSurvey = lazy(() => import("@/pages/NPSSurvey"));
+const EngineeringHub = lazy(() => import("@/pages/EngineeringHub"));
+const DocTypeBuilder = lazy(() => import("@/pages/DocTypeBuilder"));
+const PageBuilder = lazy(() => import("@/pages/PageBuilder"));
+const DevelopmentModule = lazy(() => import("@/pages/DevelopmentModule"));
+const ArcadiaRetail = lazy(() => import("@/pages/ArcadiaRetail"));
+const Plus = lazy(() => import("@/pages/Plus"));
+const SuperAdmin = lazy(() => import("@/pages/SuperAdmin"));
+const Marketplace = lazy(() => import("@/pages/Marketplace"));
+const LMS = lazy(() => import("@/pages/LMS"));
+const AppCenter = lazy(() => import("@/pages/AppCenter"));
+const XosCentral = lazy(() => import("@/pages/XosCentral"));
+const XosCrm = lazy(() => import("@/pages/XosCrm"));
+const XosInbox = lazy(() => import("@/pages/XosInbox"));
+const XosTickets = lazy(() => import("@/pages/XosTickets"));
+const Migration = lazy(() => import("@/pages/Migration"));
+const DevCenter = lazy(() => import("@/pages/DevCenter"));
+const XosCampaigns = lazy(() => import("@/pages/XosCampaigns"));
+const XosAutomations = lazy(() => import("@/pages/XosAutomations"));
+const XosSites = lazy(() => import("@/pages/XosSites"));
+const XosGovernance = lazy(() => import("@/pages/XosGovernance"));
+const XosPipeline = lazy(() => import("@/pages/XosPipeline"));
+
+
+function LoadingFallback() {
+  return (
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ width: 40, height: 40, border: "3px solid #e5e7eb", borderTopColor: "#3b82f6", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto" }} />
+        <p style={{ marginTop: 16, color: "#6b7280" }}>Carregando...</p>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+}
 
 function Router() {
   return (
+    <Suspense fallback={<LoadingFallback />}>
     <Switch>
       <ProtectedRoute path="/" component={Cockpit} />
       <ProtectedRoute path="/agent" component={Agent} />
@@ -93,7 +108,8 @@ function Router() {
       <ProtectedRoute path="/fisco" component={Fisco} />
       <ProtectedRoute path="/people" component={People} />
       <ProtectedRoute path="/contabil" component={Contabil} />
-      <ProtectedRoute path="/erp" component={ERP} />
+      <ProtectedRoute path="/soe" component={SOE} />
+      <ProtectedRoute path="/erp" component={SOE} />
       <ProtectedRoute path="/financeiro" component={Financeiro} />
       <ProtectedRoute path="/communities" component={Communities} />
       <ProtectedRoute path="/quality" component={QualityModule} />
@@ -129,6 +145,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <Route component={NotFound} />
     </Switch>
+    </Suspense>
   );
 }
 
@@ -136,14 +153,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ErpProfileProvider>
+        <SoeMotorProvider>
           <TooltipProvider>
             <KnowledgeCollectorInit />
             <Toaster />
             <CommandPalette />
             <Router />
           </TooltipProvider>
-        </ErpProfileProvider>
+        </SoeMotorProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

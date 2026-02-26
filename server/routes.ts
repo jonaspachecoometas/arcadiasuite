@@ -5,7 +5,7 @@ import { insertApplicationSchema } from "@shared/schema";
 import { z } from "zod";
 import { setupAuth } from "./auth";
 import { registerChatRoutes } from "./replit_integrations/chat";
-import { registerErpRoutes } from "./erp/routes";
+import { registerSoeRoutes, registerErpRoutes } from "./erp/routes";
 import { registerInternalChatRoutes } from "./chat/routes";
 import { setupChatSocket } from "./chat/socket";
 import { setupCommunitySocket } from "./communities/socket";
@@ -57,6 +57,7 @@ import autonomousRoutes from "./autonomous/routes";
 import blackboardRoutes from "./blackboard/routes";
 import pipelineRoutes from "./blackboard/pipelineRoutes";
 import { startAllAgents } from "./blackboard/agents";
+import { loadModuleRoutes } from "./modules/loader";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -72,7 +73,7 @@ export async function registerRoutes(
   setupMetabaseProxy(app);
   
   registerChatRoutes(app);
-  registerErpRoutes(app);
+  registerSoeRoutes(app);
   registerInternalChatRoutes(app);
   setupChatSocket(httpServer);
   setupCommunitySocket(httpServer);
@@ -119,6 +120,9 @@ export async function registerRoutes(
   app.use("/api/autonomous", autonomousRoutes);
   app.use("/api/blackboard", blackboardRoutes);
   app.use("/api/xos/pipeline", pipelineRoutes);
+  
+  // Auto-loader de módulos criados pelo Dev Center
+  await loadModuleRoutes(app);
   
   // Iniciar os 6 agentes do Blackboard
   startAllAgents();

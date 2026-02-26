@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { registerAllTools } from "./autonomous/tools";
+import { storage } from "./storage";
 import { createServer } from "http";
 import { spawn } from "child_process";
 import path from "path";
@@ -270,8 +271,6 @@ function startShellService(name: string, scriptPath: string, port: number) {
   return shellProcess;
 }
 
-startShellService("metabase", path.join(process.cwd(), "metabase/start-metabase.sh"), 8088);
-
 const app = express();
 const httpServer = createServer(app);
 
@@ -333,6 +332,30 @@ app.use((req, res, next) => {
 // It's registered after session middleware to enable SSO authentication
 
 (async () => {
+  // Seed master user if not exists
+  try {
+    const { scrypt, randomBytes } = await import("crypto");
+    const { promisify } = await import("util");
+    const scryptAsync = promisify(scrypt);
+    const existingAdmin = await storage.getUserByUsername("admin");
+    if (!existingAdmin) {
+      const salt = randomBytes(16).toString("hex");
+      const buf = (await scryptAsync("admin", salt, 64)) as Buffer;
+      const hashedPassword = `${buf.toString("hex")}.${salt}`;
+      await storage.createUser({
+        username: "admin",
+        password: hashedPassword,
+        name: "Administrador Master",
+        email: "admin@arcadia.suite",
+        role: "master",
+        status: "active",
+      });
+      console.log("[Seed] Usuário master 'admin' criado com sucesso");
+    }
+  } catch (e: any) {
+    console.log("[Seed] Verificação de usuário master:", e.message);
+  }
+
   await registerRoutes(httpServer, app);
 
   await registerAllTools();

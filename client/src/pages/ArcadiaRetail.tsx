@@ -17,7 +17,8 @@ import {
   Truck, FileText, Settings, RefreshCw, Trash2, Edit, 
   GripVertical, ListChecks, FileCheck, ExternalLink, UserPlus, User, CreditCard,
   Lock, RefreshCcw, X, Loader2, ShoppingBag, FileBarChart, Percent, Tag, Banknote, Gift, Printer,
-  Target, Calendar, Headphones, Upload, List, FileSpreadsheet
+  Target, Calendar, Headphones, Upload, List, FileSpreadsheet,
+  ClipboardCheck, Circle
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -25,6 +26,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pencil } from "lucide-react";
 import TradeInForm from "@/components/TradeInForm";
+
 
 interface DashboardStats {
   devicesInStock: number;
@@ -189,6 +191,18 @@ export default function ArcadiaRetail() {
   const [evaluations, setEvaluations] = useState<DeviceEvaluation[]>([]);
   const [activities, setActivities] = useState<ActivityFeedItem[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  
+  const [empresas, setEmpresas] = useState<any[]>([]);
+  const [sellers, setSellers] = useState<any[]>([]);
+  const [selectedEmpresaId, setSelectedEmpresaId] = useState<number | null>(() => {
+    const stored = localStorage.getItem("retail_empresa_id");
+    return stored ? parseInt(stored) : null;
+  });
+  const [selectedSellerId, setSelectedSellerId] = useState<number | null>(() => {
+    const stored = localStorage.getItem("retail_seller_id");
+    return stored ? parseInt(stored) : null;
+  });
+  const [showSessionRequired, setShowSessionRequired] = useState(false);
   const [showNewDeviceDialog, setShowNewDeviceDialog] = useState(false);
   const [showNewServiceDialog, setShowNewServiceDialog] = useState(false);
   const [showEvaluationDialog, setShowEvaluationDialog] = useState(false);
@@ -273,6 +287,8 @@ export default function ArcadiaRetail() {
     imei?: string;
     name: string;
     description?: string;
+    code?: string;
+    ncm?: string;
     quantity: number;
     unitPrice: number;
     discount: number;
@@ -299,6 +315,12 @@ export default function ArcadiaRetail() {
   const [customerTotalCredit, setCustomerTotalCredit] = useState(0);
   const [useCredit, setUseCredit] = useState(false);
   const [creditAmountToUse, setCreditAmountToUse] = useState(0);
+  
+  const [showCashMovementDialog, setShowCashMovementDialog] = useState(false);
+  const [cashMovementType, setCashMovementType] = useState<"withdrawal"|"reinforcement">("withdrawal");
+  const [cashMovements, setCashMovements] = useState<any[]>([]);
+  const [cashMovementAmount, setCashMovementAmount] = useState("");
+  const [cashMovementReason, setCashMovementReason] = useState("");
   
   // Trade-In Alerts & Status
   const [customerTradeIns, setCustomerTradeIns] = useState<any[]>([]);
@@ -330,6 +352,12 @@ export default function ArcadiaRetail() {
   const [osStatus, setOsStatus] = useState("");
   const [osEvaluationStatus, setOsEvaluationStatus] = useState("");
   const [osNotes, setOsNotes] = useState("");
+  const [osChecklistData, setOsChecklistData] = useState<Record<string, any>>({});
+  const [osItems, setOsItems] = useState<any[]>([]);
+  const [osItemSearch, setOsItemSearch] = useState("");
+  const [osItemResults, setOsItemResults] = useState<any[]>([]);
+  const [osItemQuantity, setOsItemQuantity] = useState(1);
+  const [loadingOsItems, setLoadingOsItems] = useState(false);
   
   // Estados para Cadastros
   const [cadastroPaymentMethods, setCadastroPaymentMethods] = useState<PaymentMethod[]>([]);
@@ -367,7 +395,6 @@ export default function ArcadiaRetail() {
     supplierId: "", supplierName: "", invoiceNumber: "", invoiceDate: "", 
     warehouseId: "", notes: "", items: [] 
   });
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
   
   const [showPaymentMethodsDialog, setShowPaymentMethodsDialog] = useState(false);
   const [showSellersDialog, setShowSellersDialog] = useState(false);
@@ -379,7 +406,19 @@ export default function ArcadiaRetail() {
   const [salesDetailLoading, setSalesDetailLoading] = useState(false);
   const [reportDateFrom, setReportDateFrom] = useState(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
   const [reportDateTo, setReportDateTo] = useState(new Date().toISOString().split('T')[0]);
+  const [dailyCashDate, setDailyCashDate] = useState(new Date().toISOString().split('T')[0]);
   const [reportSellerId, setReportSellerId] = useState<string>("all");
+  
+  const [stockAlerts, setStockAlerts] = useState<any[]>([]);
+  const [reportSubTab, setReportSubTab] = useState("os-status");
+  const [reportOsByStatus, setReportOsByStatus] = useState<any[]>([]);
+  const [reportOsByTech, setReportOsByTech] = useState<any[]>([]);
+  const [reportSalesBySeller, setReportSalesBySeller] = useState<any[]>([]);
+  const [reportMarginByImei, setReportMarginByImei] = useState<any[]>([]);
+  const [reportDailyCash, setReportDailyCash] = useState<any>(null);
+  const [reportStockTurnover, setReportStockTurnover] = useState<any[]>([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [warrantyCache, setWarrantyCache] = useState<Record<string, boolean>>({});
   
   // Estados para Comissões
   const [commissionDashboard, setCommissionDashboard] = useState<any>(null);
@@ -415,6 +454,8 @@ export default function ArcadiaRetail() {
     loadChecklistTemplates();
     loadPersons();
     loadActivities();
+    loadEmpresas();
+    loadSellers();
   }, []);
 
   const loadActivities = async () => {
@@ -429,6 +470,186 @@ export default function ArcadiaRetail() {
     }
   };
   
+  const loadStockAlerts = async () => {
+    try {
+      const res = await fetch("/api/retail/stock-alerts", { credentials: "include" });
+      if (res.ok) setStockAlerts(await res.json());
+    } catch (error) {
+      console.error("Error loading stock alerts:", error);
+    }
+  };
+
+  const loadCashMovements = async () => {
+    try {
+      const res = await fetch("/api/retail/cash-movements", { credentials: "include" });
+      if (res.ok) setCashMovements(await res.json());
+    } catch (error) {
+      console.error("Error loading cash movements:", error);
+    }
+  };
+
+  const handleCreateCashMovement = async () => {
+    if (!cashMovementAmount || parseFloat(cashMovementAmount) <= 0) {
+      toast({ title: "Informe um valor válido", variant: "destructive" });
+      return;
+    }
+    try {
+      const res = await fetch("/api/retail/cash-movements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          sessionId: null,
+          storeId: selectedEmpresaId || 1,
+          type: cashMovementType,
+          amount: cashMovementAmount,
+          reason: cashMovementReason
+        })
+      });
+      if (res.ok) {
+        toast({ title: cashMovementType === "withdrawal" ? "Sangria registrada!" : "Reforço registrado!" });
+        setShowCashMovementDialog(false);
+        setCashMovementAmount("");
+        setCashMovementReason("");
+        loadCashMovements();
+      }
+    } catch (error) {
+      toast({ title: "Erro ao registrar movimentação", variant: "destructive" });
+    }
+  };
+
+  const loadReportData = async (reportType: string) => {
+    setReportLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (reportDateFrom) params.append("dateFrom", reportDateFrom);
+      if (reportDateTo) params.append("dateTo", reportDateTo);
+      if (reportType === "daily-cash") params.append("date", dailyCashDate);
+      
+      const res = await fetch(`/api/retail/reports/${reportType}?${params}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        switch (reportType) {
+          case "os-by-status": setReportOsByStatus(data); break;
+          case "os-by-technician": setReportOsByTech(data); break;
+          case "sales-by-seller": setReportSalesBySeller(data); break;
+          case "margin-by-imei": setReportMarginByImei(data); break;
+          case "daily-cash": setReportDailyCash(data); break;
+          case "stock-turnover": setReportStockTurnover(data); break;
+        }
+      }
+    } catch (error) {
+      console.error("Error loading report:", error);
+    }
+    setReportLoading(false);
+  };
+
+  const checkWarranty = async (imei: string) => {
+    if (warrantyCache[imei] !== undefined) return;
+    try {
+      const res = await fetch(`/api/retail/warranties/check/${imei}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setWarrantyCache(prev => ({ ...prev, [imei]: data.hasActiveWarranty }));
+      }
+    } catch (error) {
+      console.error("Error checking warranty:", error);
+    }
+  };
+
+  const loadOsItems = async (orderId: number) => {
+    try {
+      setLoadingOsItems(true);
+      const res = await fetch(`/api/retail/service-orders/${orderId}/items`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setOsItems(Array.isArray(data) ? data : []);
+      }
+    } catch (e) { console.error(e); }
+    finally { setLoadingOsItems(false); }
+  };
+
+  const searchOsProducts = async (term: string) => {
+    if (term.length < 2) { setOsItemResults([]); return; }
+    try {
+      const res = await fetch(`/api/soe/products?search=${encodeURIComponent(term)}`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setOsItemResults(Array.isArray(data) ? data.slice(0, 10) : []);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const addOsItem = async (product: any) => {
+    if (!editingServiceOrder) return;
+    try {
+      const res = await fetch(`/api/retail/service-orders/${editingServiceOrder.id}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          productId: product.id,
+          itemType: "part",
+          itemCode: product.code,
+          itemName: product.name,
+          quantity: osItemQuantity,
+          unitPrice: parseFloat(product.costPrice || product.salePrice || 0),
+        })
+      });
+      if (res.ok) {
+        await loadOsItems(editingServiceOrder.id);
+        setOsItemSearch("");
+        setOsItemResults([]);
+        setOsItemQuantity(1);
+        toast({ title: "Peça adicionada!", description: product.name });
+      }
+    } catch (e) { toast({ title: "Erro ao adicionar peça", variant: "destructive" }); }
+  };
+
+  const removeOsItem = async (itemId: number) => {
+    if (!editingServiceOrder) return;
+    try {
+      const res = await fetch(`/api/retail/service-orders/${editingServiceOrder.id}/items/${itemId}`, {
+        method: "DELETE",
+        credentials: "include"
+      });
+      if (res.ok) {
+        await loadOsItems(editingServiceOrder.id);
+        toast({ title: "Peça removida" });
+      }
+    } catch (e) { toast({ title: "Erro ao remover peça", variant: "destructive" }); }
+  };
+
+  useEffect(() => {
+    if (activeTab === "dashboard") {
+      loadStockAlerts();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "relatorios") {
+      loadReportData(reportSubTab === "os-status" ? "os-by-status" : 
+        reportSubTab === "os-tech" ? "os-by-technician" :
+        reportSubTab === "sales-seller" ? "sales-by-seller" :
+        reportSubTab === "margin-imei" ? "margin-by-imei" :
+        reportSubTab === "daily-cash" ? "daily-cash" : "stock-turnover");
+    }
+  }, [activeTab, reportSubTab]);
+
+  useEffect(() => {
+    if (activeTab === "servicos") {
+      serviceOrders.forEach(order => {
+        if (order.imei) checkWarranty(order.imei);
+      });
+    }
+  }, [activeTab, serviceOrders]);
+
+  useEffect(() => {
+    if (activeTab === "pdv") {
+      loadCashMovements();
+    }
+  }, [activeTab]);
+
   // Auto-refresh activity feed every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -594,7 +815,7 @@ export default function ArcadiaRetail() {
 
   const loadAllProducts = async () => {
     try {
-      const res = await fetch("/api/erp/products", { credentials: "include" });
+      const res = await fetch("/api/soe/products", { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setAllProducts(data);
@@ -859,7 +1080,7 @@ export default function ArcadiaRetail() {
 
   const loadPersons = async () => {
     try {
-      let url = "/api/erp/persons";
+      let url = "/api/soe/persons";
       const params = new URLSearchParams();
       if (personSearch) params.append("search", personSearch);
       if (personRoleFilter && personRoleFilter !== "all") params.append("role", personRoleFilter);
@@ -956,7 +1177,7 @@ export default function ArcadiaRetail() {
 
   const handleQuickPersonSave = async () => {
     try {
-      const res = await fetch("/api/erp/persons", {
+      const res = await fetch("/api/soe/persons", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...quickPerson, roles: ["customer"] }),
@@ -1169,14 +1390,14 @@ export default function ArcadiaRetail() {
       
       let res;
       if (editingPerson) {
-        res = await fetch(`/api/erp/persons/${editingPerson.id}`, {
+        res = await fetch(`/api/soe/persons/${editingPerson.id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(personData),
           credentials: "include"
         });
       } else {
-        res = await fetch("/api/erp/persons", {
+        res = await fetch("/api/soe/persons", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(personData),
@@ -1294,7 +1515,7 @@ export default function ArcadiaRetail() {
 
   const handleTogglePersonActive = async (personId: number, isActive: boolean) => {
     try {
-      const res = await fetch(`/api/erp/persons/${personId}`, {
+      const res = await fetch(`/api/soe/persons/${personId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1317,7 +1538,7 @@ export default function ArcadiaRetail() {
       return;
     }
     try {
-      const res = await fetch(`/api/erp/persons/${personId}`, {
+      const res = await fetch(`/api/soe/persons/${personId}`, {
         method: "DELETE",
         credentials: "include"
       });
@@ -1515,6 +1736,58 @@ export default function ArcadiaRetail() {
     return labels[type] || type;
   };
 
+  const loadEmpresas = async () => {
+    try {
+      const res = await fetch("/api/soe/empresas", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setEmpresas(data);
+        if (data.length > 0 && !selectedEmpresaId) {
+          const firstId = data[0].id;
+          setSelectedEmpresaId(firstId);
+          localStorage.setItem("retail_empresa_id", String(firstId));
+        }
+      }
+    } catch (error) {
+      console.error("Error loading empresas:", error);
+    }
+  };
+
+  const loadSellers = async () => {
+    try {
+      const res = await fetch("/api/retail/sellers", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setSellers(data.filter((s: any) => s.isActive !== false));
+      }
+    } catch (error) {
+      console.error("Error loading sellers:", error);
+    }
+  };
+
+  const handleSelectEmpresa = (id: string) => {
+    const numId = parseInt(id);
+    setSelectedEmpresaId(numId);
+    localStorage.setItem("retail_empresa_id", String(numId));
+  };
+
+  const handleSelectSeller = (id: string) => {
+    const numId = parseInt(id);
+    setSelectedSellerId(numId);
+    localStorage.setItem("retail_seller_id", String(numId));
+  };
+
+  const requireSession = (): boolean => {
+    if (!selectedEmpresaId || !selectedSellerId) {
+      setShowSessionRequired(true);
+      return false;
+    }
+    return true;
+  };
+
+  const selectedEmpresa = empresas.find(e => e.id === selectedEmpresaId);
+  const selectedSeller = sellers.find(s => s.id === selectedSellerId);
+
   const loadDashboardStats = async () => {
     try {
       const res = await fetch("/api/retail/dashboard/stats", { credentials: "include" });
@@ -1684,6 +1957,8 @@ export default function ArcadiaRetail() {
       type: "product",
       productId: product.id,
       name: product.name,
+      code: product.code || "",
+      ncm: product.ncm || "",
       description: `${product.code} - ${product.category || ""}`,
       quantity: qty,
       unitPrice: parseFloat(product.salePrice || product.sale_price || "0"),
@@ -1952,10 +2227,178 @@ export default function ArcadiaRetail() {
     if (activeTab === "pdv") {
       loadDevices();
       loadAvailableOs();
+      fetchPdvProducts();
     }
   }, [activeTab]);
 
+  const printSaleOrder = (saleResult: any, cartItems: CartItem[], customer: any, empresa: any, seller: any, payments: {method: string; amount: number}[]) => {
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR');
+    const paymentLabels: Record<string, string> = {
+      cash: "Dinheiro", credit: "Crédito Loja", credit_card: "Cartão de Crédito",
+      debit: "Débito", debit_card: "Cartão de Débito", pix: "PIX",
+      combined: "Combinado", customer_credit: "Crédito Cliente"
+    };
+
+    const itemsRows = cartItems.map((item, i) => `
+      <tr>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center">${item.code || item.productId || item.deviceId || i + 1}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-size:10px">${item.ncm || '-'}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd">${item.name}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center;font-family:monospace;font-size:10px">${item.imei || '-'}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center">${item.quantity}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center">UN</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:right">${formatCurrency(item.unitPrice)}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:right">${formatCurrency((item.unitPrice * item.quantity) - item.discount)}</td>
+      </tr>
+    `).join('');
+
+    const subtotal = cartItems.reduce((s, item) => s + (item.unitPrice * item.quantity), 0);
+    const totalDiscount = cartItems.reduce((s, item) => s + item.discount, 0);
+    const totalFinal = parseFloat(saleResult.totalAmount || "0");
+
+    const paymentRows = payments.length > 0 ? payments.map((pm, i) => `
+      <tr>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center">${i + 1}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd">${paymentLabels[pm.method] || pm.method}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center">${dateStr}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:right">${formatCurrency(pm.amount)}</td>
+      </tr>
+    `).join('') : `
+      <tr>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center">1</td>
+        <td style="padding:6px 8px;border:1px solid #ddd">${paymentLabels[saleResult.paymentMethod] || saleResult.paymentMethod || 'Dinheiro'}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:center">${dateStr}</td>
+        <td style="padding:6px 8px;border:1px solid #ddd;text-align:right">${formatCurrency(totalFinal)}</td>
+      </tr>
+    `;
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Pedido ${saleResult.saleNumber}</title>
+<style>
+  @page { size: A4; margin: 15mm; }
+  body { font-family: Arial, sans-serif; font-size: 12px; color: #333; margin: 0; padding: 20px; }
+  .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 15px; }
+  .header h1 { margin: 0; font-size: 20px; }
+  .header p { margin: 2px 0; font-size: 11px; color: #555; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; border: 1px solid #ddd; margin-bottom: 15px; }
+  .info-cell { padding: 8px 10px; border: 1px solid #ddd; }
+  .info-cell label { font-size: 10px; color: #888; display: block; margin-bottom: 2px; }
+  .info-cell span { font-weight: bold; font-size: 13px; }
+  .section-title { background: #f5f5f5; padding: 6px 10px; font-weight: bold; font-size: 12px; border: 1px solid #ddd; margin-top: 15px; }
+  .customer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #ddd; }
+  .customer-cell { padding: 6px 10px; border: 1px solid #ddd; font-size: 11px; }
+  .customer-cell label { color: #888; font-size: 10px; margin-right: 5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th { background: #f5f5f5; padding: 6px 8px; border: 1px solid #ddd; font-size: 10px; text-transform: uppercase; }
+  .totals-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0; border: 1px solid #ddd; margin-top: 0; }
+  .total-cell { padding: 8px 10px; border: 1px solid #ddd; text-align: center; }
+  .total-cell label { font-size: 10px; color: #888; display: block; }
+  .total-cell span { font-weight: bold; font-size: 13px; }
+  .warranty { font-size: 10px; line-height: 1.4; padding: 10px; border: 1px solid #ddd; margin-top: 10px; text-align: justify; }
+  .footer { margin-top: 30px; text-align: center; font-size: 10px; color: #888; }
+  @media print { body { padding: 0; } }
+</style></head><body>
+
+<div class="header">
+  <h1>${empresa?.nomeFantasia || empresa?.razaoSocial || 'Loja'}</h1>
+  <p>${empresa?.razaoSocial || ''}</p>
+  <p>CNPJ ${empresa?.cnpj || ''}</p>
+  <p>${empresa?.logradouro || ''}${empresa?.numero ? ', ' + empresa.numero : ''} ${empresa?.bairro || ''} - ${empresa?.cidade || ''}${empresa?.uf ? ' - ' + empresa.uf : ''}</p>
+  <p>Email: ${empresa?.email || ''} &nbsp;&nbsp; Fone: ${empresa?.phone || ''}</p>
+</div>
+
+<div class="info-grid">
+  <div class="info-cell"><label>Número do Pedido</label><span>${saleResult.saleNumber}</span></div>
+  <div class="info-cell"><label>Data da Emissão</label><span>${dateStr}</span></div>
+  <div class="info-cell"><label>Validade Orçamento</label><span>${dateStr}</span></div>
+</div>
+
+<div class="customer-grid">
+  <div class="customer-cell" style="grid-column:span 2"><label>Cliente:</label>${customer?.fullName || customer?.name || 'Consumidor'}</div>
+  <div class="customer-cell"><label>CPF/CNPJ:</label>${customer?.cpfCnpj || '-'}</div>
+  <div class="customer-cell"><label>Telefone:</label>${customer?.phone || customer?.celular || '-'}</div>
+  <div class="customer-cell"><label>E-mail:</label>${customer?.email || '-'}</div>
+  <div class="customer-cell"><label>Endereço:</label>${customer?.address || customer?.logradouro || '-'}</div>
+  <div class="customer-cell"><label>Cidade:</label>${customer?.city || customer?.cidade || '-'}${customer?.state || customer?.uf ? ' - ' + (customer.state || customer.uf) : ''}</div>
+  <div class="customer-cell"><label>Bairro:</label>${customer?.neighborhood || customer?.bairro || '-'}</div>
+</div>
+
+<div class="customer-grid" style="margin-top:-1px">
+  <div class="customer-cell"><label>Condições:</label>${payments.length > 1 ? 'Combinado' : paymentLabels[payments[0]?.method || saleResult.paymentMethod] || 'A Vista'}</div>
+  <div class="customer-cell"><label>Vendedor:</label>${seller?.name || '-'}</div>
+  <div class="customer-cell"><label>Frete por conta:</label>Do Emitente</div>
+  <div class="customer-cell"><label>CEP:</label>${customer?.cep || customer?.zipCode || '-'}</div>
+</div>
+
+<div class="section-title">Produtos e Serviços</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:60px">Código</th>
+      <th style="width:80px">NCM</th>
+      <th>Descrição</th>
+      <th style="width:120px">N. Série</th>
+      <th style="width:40px">Qtd.</th>
+      <th style="width:35px">Un</th>
+      <th style="width:95px;text-align:right">Valor Unitário</th>
+      <th style="width:95px;text-align:right">Valor Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${itemsRows}
+    <tr style="font-weight:bold;background:#f9f9f9">
+      <td colspan="7" style="padding:6px 8px;border:1px solid #ddd;text-align:right">Total</td>
+      <td style="padding:6px 8px;border:1px solid #ddd;text-align:right">${formatCurrency(subtotal - totalDiscount)}</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="section-title">Totais</div>
+<div class="totals-grid">
+  <div class="total-cell"><label>Frete</label><span>${formatCurrency(0)}</span></div>
+  <div class="total-cell"><label>Desconto</label><span>${formatCurrency(totalDiscount)}</span></div>
+  <div class="total-cell"><label>Total Sem Desconto</label><span>${formatCurrency(subtotal)}</span></div>
+  <div class="total-cell"><label>Total Final</label><span style="color:#16a34a">${formatCurrency(totalFinal)}</span></div>
+</div>
+
+<div class="section-title">Condições de Vendas</div>
+<table>
+  <thead>
+    <tr>
+      <th style="width:60px">Nº Pagto</th>
+      <th>Forma de Pagamento</th>
+      <th style="width:100px">Vencimento</th>
+      <th style="width:120px;text-align:right">Valor</th>
+    </tr>
+  </thead>
+  <tbody>${paymentRows}</tbody>
+</table>
+
+<div class="section-title">Termos de Garantia</div>
+<div class="warranty">
+  SOBRE A GARANTIA: Garantia de acessórios de 90 dias a contar a partir da data de compra. Garantia de aparelhos Seminovos a partir da data de compra tem prazo de 3 meses para modelos abaixo do iPhone X e de 12 meses para modelos acima do iPhone 11, para aparelhos Novos 1 ano de garantia pela Apple. GARANTIA É CANCELADA automaticamente nos seguintes casos: queda, esmagamentos, sobrecargas elétricas, exposição a altas temperaturas, umidade ou líquidos, exposição a poeira ou limalha de metais ou em casos que seja constatado mau uso do aparelho, instalações, modificações ou atualizações no sistema operacional; Abertura do equipamento ou tentativa de conserto destes por terceiros que não sejam os técnicos autorizados, mesmo que para realizações de outros serviços, bem como a violação do selo/lacre de garantia. AGRADECEMOS PELA CONFIANÇA.
+</div>
+
+<div class="section-title">Observações</div>
+<div class="warranty">Gerado automaticamente através do módulo PDV - Arcádia Retail</div>
+
+<div class="footer">
+  <p>Documento gerado em ${now.toLocaleString('pt-BR')} | ${empresa?.nomeFantasia || 'Arcádia Retail'}</p>
+</div>
+
+</body></html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      setTimeout(() => printWindow.print(), 500);
+    }
+  };
+
   const finalizeSale = async () => {
+    if (!requireSession()) return;
     if (!pdvCustomer) {
       toast({ title: "Selecione um cliente", variant: "destructive" });
       return;
@@ -1991,6 +2434,9 @@ export default function ArcadiaRetail() {
       const saleData = {
         sessionId: null,
         storeId: 1,
+        empresaId: selectedEmpresaId,
+        sellerId: selectedSellerId,
+        sellerName: selectedSeller?.name || "",
         customerId: String(pdvCustomer.id),
         personId: pdvCustomer.id,
         customerName: pdvCustomer.fullName,
@@ -2038,6 +2484,7 @@ export default function ArcadiaRetail() {
             });
           }
         }
+        printSaleOrder(saleResult, cart, pdvCustomer, selectedEmpresa, selectedSeller, paymentMethods);
         toast({ title: "Venda finalizada com sucesso!" });
         clearCart();
         setShowPaymentModal(false);
@@ -2066,7 +2513,7 @@ export default function ArcadiaRetail() {
   return (
     <BrowserFrame>
       <div className="h-full flex flex-col bg-background">
-        <div className="border-b bg-muted/30 px-6 py-4">
+        <div className="border-b bg-muted/30 px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center">
@@ -2077,22 +2524,73 @@ export default function ArcadiaRetail() {
                 <p className="text-sm text-muted-foreground">Loja e Assistência Técnica de Celulares</p>
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 border rounded-lg px-3 py-1.5 bg-background" data-testid="session-selectors">
+                <div className="flex items-center gap-1.5">
+                  <Store className="h-4 w-4 text-muted-foreground" />
+                  <Select value={selectedEmpresaId ? String(selectedEmpresaId) : ""} onValueChange={handleSelectEmpresa}>
+                    <SelectTrigger className="h-8 w-[180px] border-0 bg-transparent shadow-none text-sm" data-testid="select-empresa">
+                      <SelectValue placeholder="Selecione a Empresa" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {empresas.map(emp => (
+                        <SelectItem key={emp.id} value={String(emp.id)}>
+                          {emp.nomeFantasia || emp.razaoSocial}
+                        </SelectItem>
+                      ))}
+                      {empresas.length === 0 && (
+                        <SelectItem value="__none" disabled>Nenhuma empresa cadastrada</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="w-px h-6 bg-border" />
+                <div className="flex items-center gap-1.5">
+                  <User className="h-4 w-4 text-muted-foreground" />
+                  <Select value={selectedSellerId ? String(selectedSellerId) : ""} onValueChange={handleSelectSeller}>
+                    <SelectTrigger className="h-8 w-[160px] border-0 bg-transparent shadow-none text-sm" data-testid="select-vendedor">
+                      <SelectValue placeholder="Selecione o Vendedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sellers.map(seller => (
+                        <SelectItem key={seller.id} value={String(seller.id)}>
+                          {seller.name}
+                        </SelectItem>
+                      ))}
+                      {sellers.length === 0 && (
+                        <SelectItem value="__none" disabled>Nenhum vendedor cadastrado</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               <Button variant="outline" size="sm" onClick={() => { loadDashboardStats(); loadDevices(); loadServiceOrders(); loadEvaluations(); }}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Atualizar
               </Button>
-              <Button size="sm" onClick={() => setActiveTab("pdv")}>
+              <Button size="sm" onClick={() => {
+                if (requireSession()) setActiveTab("pdv");
+              }}>
                 <ShoppingCart className="h-4 w-4 mr-2" />
                 Abrir PDV
               </Button>
             </div>
           </div>
+          {(!selectedEmpresaId || !selectedSellerId) && (
+            <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-sm text-amber-800" data-testid="session-warning">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span>Selecione a <strong>empresa</strong> e o <strong>vendedor</strong> para iniciar as operações.</span>
+            </div>
+          )}
         </div>
         <div className="flex-1 overflow-auto p-6">
           <div className="max-w-7xl mx-auto space-y-6">
 
         <Tabs value={activeTab} onValueChange={(tab) => {
+          const operationalTabs = ["pdv", "servicos", "tradein", "compras"];
+          if (operationalTabs.includes(tab) && (!selectedEmpresaId || !selectedSellerId)) {
+            if (!requireSession()) return;
+          }
           setActiveTab(tab);
           if (tab === "estoque") {
             loadWarehouses();
@@ -2277,6 +2775,38 @@ export default function ArcadiaRetail() {
               </Card>
             </div>
 
+            {stockAlerts.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                    Produtos com Estoque Baixo
+                    <Badge variant="destructive" className="ml-2">{stockAlerts.length}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                    {stockAlerts.map((product: any) => (
+                      <div key={product.id} className="flex items-center justify-between p-3 border rounded-lg" data-testid={`stock-alert-${product.id}`}>
+                        <div>
+                          <p className="font-medium">{product.name}</p>
+                          <p className="text-sm text-muted-foreground">{product.code} | {product.category || "Sem categoria"}</p>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="destructive" data-testid={`stock-qty-${product.id}`}>
+                            Estoque: {parseFloat(product.stockQty || product.stock_qty || "0").toFixed(0)}
+                          </Badge>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Mín: {parseFloat(product.minStock || product.min_stock || "0").toFixed(0)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -2349,11 +2879,30 @@ export default function ArcadiaRetail() {
                       <ShoppingCart className="h-5 w-5" />
                       Ponto de Venda
                     </CardTitle>
-                    <CardDescription>
-                      Realize vendas de dispositivos, acessórios e serviços
+                    <CardDescription className="flex items-center gap-3">
+                      {selectedEmpresa && (
+                        <span className="inline-flex items-center gap-1">
+                          <Store className="h-3 w-3" />
+                          {selectedEmpresa.nomeFantasia || selectedEmpresa.razaoSocial}
+                        </span>
+                      )}
+                      {selectedSeller && (
+                        <span className="inline-flex items-center gap-1">
+                          <User className="h-3 w-3" />
+                          Vendedor: <strong>{selectedSeller.name}</strong>
+                        </span>
+                      )}
                     </CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => { setCashMovementType("withdrawal"); setShowCashMovementDialog(true); }} data-testid="btn-sangria">
+                      <Banknote className="h-4 w-4 mr-2" />
+                      Sangria
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => { setCashMovementType("reinforcement"); setShowCashMovementDialog(true); }} data-testid="btn-reforco">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Reforço
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => setShowReturnModal(true)} data-testid="btn-return">
                       <RefreshCcw className="h-4 w-4 mr-2" />
                       Devolução
@@ -2389,7 +2938,7 @@ export default function ArcadiaRetail() {
                       <TabsContent value="dispositivos" className="mt-4">
                         <div className="flex gap-2 mb-4">
                           <Input 
-                            placeholder="Buscar por IMEI, marca ou modelo..." 
+                            placeholder="Buscar por IMEI, marca, modelo, cor, armazenamento..." 
                             value={pdvSearch}
                             onChange={(e) => setPdvSearch(e.target.value)}
                             data-testid="input-search-pdv"
@@ -2404,9 +2953,13 @@ export default function ArcadiaRetail() {
                           </div>
                           {devices.filter(d => d.status === "in_stock")
                             .filter(d => !pdvSearch || 
-                              d.imei.toLowerCase().includes(pdvSearch.toLowerCase()) ||
+                              d.imei?.toLowerCase().includes(pdvSearch.toLowerCase()) ||
                               d.brand?.toLowerCase().includes(pdvSearch.toLowerCase()) ||
-                              d.model?.toLowerCase().includes(pdvSearch.toLowerCase())
+                              d.model?.toLowerCase().includes(pdvSearch.toLowerCase()) ||
+                              d.color?.toLowerCase().includes(pdvSearch.toLowerCase()) ||
+                              d.storage?.toLowerCase().includes(pdvSearch.toLowerCase()) ||
+                              String(d.sellingPrice || (d as any).selling_price || "").includes(pdvSearch) ||
+                              String(d.id).includes(pdvSearch)
                             )
                             .map((device) => (
                             <div 
@@ -2454,7 +3007,7 @@ export default function ArcadiaRetail() {
                       <TabsContent value="produtos" className="mt-4">
                         <div className="flex gap-2 mb-4">
                           <Input 
-                            placeholder="Buscar por nome ou código..." 
+                            placeholder="Buscar por nome, código, descrição, código de barras..." 
                             value={pdvProductSearch}
                             onChange={(e) => setPdvProductSearch(e.target.value)}
                             data-testid="input-search-products"
@@ -2465,14 +3018,17 @@ export default function ArcadiaRetail() {
                         </div>
                         <div className="border rounded-lg max-h-80 overflow-y-auto">
                           <div className="p-2 bg-muted/50 font-medium text-sm sticky top-0">
-                            Produtos Disponíveis ({pdvProducts.filter(p => p.status === "active" && parseFloat(p.stockQty || p.stock_qty || "0") > 0).length})
+                            Produtos Disponíveis ({pdvProducts.filter(p => p.status === "active").length})
                           </div>
                           {pdvProducts
-                            .filter(p => p.status === "active" && parseFloat(p.stockQty || p.stock_qty || "0") > 0)
+                            .filter(p => p.status === "active")
                             .filter(p => !pdvProductSearch || 
                               p.name?.toLowerCase().includes(pdvProductSearch.toLowerCase()) ||
                               p.code?.toLowerCase().includes(pdvProductSearch.toLowerCase()) ||
-                              p.category?.toLowerCase().includes(pdvProductSearch.toLowerCase())
+                              p.category?.toLowerCase().includes(pdvProductSearch.toLowerCase()) ||
+                              p.description?.toLowerCase().includes(pdvProductSearch.toLowerCase()) ||
+                              p.barcode?.toLowerCase().includes(pdvProductSearch.toLowerCase()) ||
+                              p.ncm?.toLowerCase().includes(pdvProductSearch.toLowerCase())
                             )
                             .map((product) => (
                             <div 
@@ -2504,9 +3060,9 @@ export default function ArcadiaRetail() {
                               </div>
                             </div>
                           ))}
-                          {pdvProducts.filter(p => p.status === "active" && parseFloat(p.stockQty || p.stock_qty || "0") > 0).length === 0 && (
+                          {pdvProducts.filter(p => p.status === "active").length === 0 && (
                             <p className="text-center text-muted-foreground py-8">
-                              Nenhum produto em estoque. Clique no botão de atualizar.
+                              Nenhum produto cadastrado
                             </p>
                           )}
                         </div>
@@ -2628,10 +3184,24 @@ export default function ArcadiaRetail() {
                             <span className="text-green-600">- {formatCurrency(tradeInCredit)}</span>
                           </div>
                         )}
+                        {useCredit && creditAmountToUse > 0 && (
+                          <div className="flex justify-between text-sm">
+                            <span>Crédito:</span>
+                            <span className="text-blue-600">- {formatCurrency(creditAmountToUse)}</span>
+                          </div>
+                        )}
                         <div className="flex justify-between font-bold text-xl border-t pt-2">
                           <span>Total:</span>
                           <span className="text-primary">{formatCurrency(cartTotal > 0 ? cartTotal : 0)}</span>
                         </div>
+                        {customerTotalCredit > 0 && !useCredit && (
+                          <div className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg text-sm" data-testid="credit-available-hint">
+                            <Gift className="h-4 w-4 text-blue-600 flex-shrink-0" />
+                            <span className="text-blue-700">
+                              Crédito disponível: <strong>{formatCurrency(customerTotalCredit)}</strong>
+                            </span>
+                          </div>
+                        )}
                       </div>
                       
                       <div className="flex gap-2 mt-4">
@@ -2705,11 +3275,11 @@ export default function ArcadiaRetail() {
                   <div className="flex gap-2">
                     <Button 
                       variant="outline" 
-                      onClick={() => window.location.href = '/erp'}
-                      data-testid="btn-goto-erp"
+                      onClick={() => window.location.href = '/soe'}
+                      data-testid="btn-goto-soe"
                     >
                       <ExternalLink className="h-4 w-4 mr-2" />
-                      Abrir Arcádia ERP
+                      Abrir Arcádia SOE
                     </Button>
                     <Button onClick={() => setShowNewPersonDialog(true)} data-testid="btn-new-person">
                       <Plus className="h-4 w-4 mr-2" />
@@ -3214,6 +3784,8 @@ export default function ArcadiaRetail() {
                             setOsEstimatedValue(String((order as any).estimatedValue || order.totalCost || 0));
                             setOsEvaluatedValue(String((order as any).evaluatedValue || (order as any).estimatedValue || order.totalCost || 0));
                             setOsNotes((order as any).diagnosisNotes || "");
+                            setOsChecklistData((order as any).checklistData || {});
+                            loadOsItems(order.id);
                             setShowOsDetailsModal(true);
                           }}
                         >
@@ -3226,6 +3798,9 @@ export default function ArcadiaRetail() {
                           <td className="p-3">
                             <p className="font-medium">{order.brand} {order.model}</p>
                             <p className="text-sm text-muted-foreground">IMEI: {order.imei}</p>
+                            {order.imei && warrantyCache[order.imei] && (
+                              <Badge variant="default" className="bg-green-600 text-white mt-1" data-testid={`warranty-badge-${order.id}`}>Em Garantia</Badge>
+                            )}
                           </td>
                           <td className="p-3">
                             <p>{order.customerName}</p>
@@ -3274,6 +3849,8 @@ export default function ArcadiaRetail() {
                                 setOsEstimatedValue(String((order as any).estimatedValue || order.totalCost || 0));
                                 setOsEvaluatedValue(String((order as any).evaluatedValue || (order as any).estimatedValue || order.totalCost || 0));
                                 setOsNotes((order as any).diagnosisNotes || "");
+                                setOsChecklistData((order as any).checklistData || {});
+                                loadOsItems(order.id);
                                 setShowOsDetailsModal(true);
                               }}
                             >
@@ -3770,251 +4347,429 @@ export default function ArcadiaRetail() {
               </CardContent>
             </Card>
 
-            {/* Cards de Relatórios */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <DollarSign className="h-4 w-4 text-green-600" />
-                    Vendas por Período
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground mb-3">Análise de vendas diária, semanal, mensal</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Hoje</div>
-                      <div className="font-bold text-green-600">R$ {stats?.todaySalesTotal?.toLocaleString('pt-BR') || '0'}</div>
-                    </div>
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Vendas</div>
-                      <div className="font-bold">{stats?.todaySalesCount || 0}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <Users className="h-4 w-4 text-purple-600" />
-                    Comissões por Vendedor
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground mb-3">Ranking e comissões da equipe</p>
-                  <div className="space-y-1 text-xs">
-                    {cadastroSellers.slice(0, 3).map((s, i) => (
-                      <div key={s.id} className="flex justify-between items-center">
-                        <span>{i + 1}. {s.name}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {cadastroCommissionPlans.find(cp => cp.id === s.commissionPlanId)?.name || "Sem plano"}
-                        </Badge>
-                      </div>
-                    ))}
-                    {cadastroSellers.length === 0 && (
-                      <p className="text-muted-foreground">Sem vendedores cadastrados</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <Package className="h-4 w-4 text-blue-600" />
-                    Estoque por Modelo
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground mb-3">Posição de estoque e giro</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Em Estoque</div>
-                      <div className="font-bold text-blue-600">{stats?.devicesInStock || 0}</div>
-                    </div>
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Modelos</div>
-                      <div className="font-bold">{devices.length || 0}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <ArrowRightLeft className="h-4 w-4 text-orange-600" />
-                    Trade-In Performance
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground mb-3">Análise de aquisições e margens</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Avaliações</div>
-                      <div className="font-bold text-orange-600">{evaluations.length || 0}</div>
-                    </div>
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Pendentes</div>
-                      <div className="font-bold">{stats?.pendingEvaluations || 0}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <CreditCard className="h-4 w-4 text-teal-600" />
-                    Formas de Pagamento
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground mb-3">Mix de recebimentos e taxas</p>
-                  <div className="space-y-1 text-xs">
-                    {cadastroPaymentMethods.slice(0, 3).map((pm) => (
-                      <div key={pm.id} className="flex justify-between items-center">
-                        <span>{pm.name}</span>
-                        <Badge variant="outline" className="text-xs">{pm.feePercent || 0}%</Badge>
-                      </div>
-                    ))}
-                    {cadastroPaymentMethods.length === 0 && (
-                      <p className="text-muted-foreground">Sem formas cadastradas</p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-              
-              <Card className="cursor-pointer hover:bg-muted/50 transition-colors">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                    <Wrench className="h-4 w-4 text-red-600" />
-                    Ordens de Serviço
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-xs text-muted-foreground mb-3">Tempo médio, receita e status</p>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Abertas</div>
-                      <div className="font-bold text-red-600">{stats?.openServiceOrders || 0}</div>
-                    </div>
-                    <div className="bg-muted p-2 rounded">
-                      <div className="text-muted-foreground">Total</div>
-                      <div className="font-bold">{serviceOrders.length || 0}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <Tabs value={reportSubTab} onValueChange={(v) => setReportSubTab(v)} className="w-full">
+              <TabsList className="grid w-full grid-cols-6">
+                <TabsTrigger value="os-status" data-testid="tab-report-os-status">OS por Status</TabsTrigger>
+                <TabsTrigger value="os-tech" data-testid="tab-report-os-tech">OS por Técnico</TabsTrigger>
+                <TabsTrigger value="sales-seller" data-testid="tab-report-sales-seller">Vendas por Vendedor</TabsTrigger>
+                <TabsTrigger value="margin-imei" data-testid="tab-report-margin-imei">Margem por IMEI</TabsTrigger>
+                <TabsTrigger value="daily-cash" data-testid="tab-report-daily-cash">Caixa Diário</TabsTrigger>
+                <TabsTrigger value="stock-turnover" data-testid="tab-report-stock-turnover">Giro de Estoque</TabsTrigger>
+              </TabsList>
 
-            {/* Painel de Vendas Detalhadas */}
-            <Card>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2">
-                    <FileBarChart className="h-5 w-5 text-primary" />
-                    Vendas Detalhadas
-                  </CardTitle>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => window.print()}
-                  >
-                    <Printer className="h-4 w-4 mr-1" />
-                    Imprimir
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-lg border overflow-auto max-h-[500px] print:max-h-none print:overflow-visible" id="sales-detail-table">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background">
-                      <TableRow>
-                        <TableHead>Data</TableHead>
-                        <TableHead>Venda #</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Vendedor</TableHead>
-                        <TableHead>Itens</TableHead>
-                        <TableHead>Pagamento</TableHead>
-                        <TableHead className="text-right">Valor</TableHead>
-                        <TableHead>Créditos</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {salesDetailData.length === 0 ? (
+              <TabsContent value="os-status" className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">OS por Status</CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => loadReportData("os-by-status")} data-testid="btn-refresh-os-status">
+                        <RefreshCw className={`h-4 w-4 mr-2 ${reportLoading ? 'animate-spin' : ''}`} />
+                        Atualizar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
                         <TableRow>
-                          <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                            {salesDetailLoading ? "Carregando..." : "Clique em 'Atualizar' acima para visualizar as vendas"}
-                          </TableCell>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Quantidade</TableHead>
+                          <TableHead className="text-right">Valor Total</TableHead>
                         </TableRow>
-                      ) : (
-                        salesDetailData.map((sale: any) => (
-                          <TableRow key={sale.id}>
-                            <TableCell className="text-sm">{new Date(sale.createdAt).toLocaleDateString("pt-BR")}</TableCell>
-                            <TableCell className="font-mono text-sm">{sale.saleNumber}</TableCell>
-                            <TableCell className="font-medium">{sale.customerName || "Consumidor"}</TableCell>
-                            <TableCell>{sale.soldBy || "-"}</TableCell>
-                            <TableCell className="text-sm">{sale.itemCount || 1}</TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {sale.paymentMethods?.map((pm: any, idx: number) => (
-                                  <Badge key={idx} variant="outline" className="text-xs">
-                                    {pm.method === "cash" ? "Dinheiro" : 
-                                     pm.method === "credit_card" ? "Crédito" :
-                                     pm.method === "debit_card" ? "Débito" :
-                                     pm.method === "pix" ? "PIX" : pm.method}
-                                  </Badge>
-                                )) || <Badge variant="outline">-</Badge>}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-right font-medium text-green-600">
-                              {formatCurrency(sale.totalAmount)}
-                            </TableCell>
-                            <TableCell>
-                              {parseFloat(sale.creditUsed || "0") > 0 ? (
-                                <Badge variant="secondary" className="text-xs">
-                                  -{formatCurrency(sale.creditUsed)}
-                                </Badge>
-                              ) : "-"}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant={sale.status === "completed" ? "default" : sale.status === "cancelled" ? "destructive" : "secondary"}>
-                                {sale.status === "completed" ? "Concluída" : sale.status === "cancelled" ? "Cancelada" : sale.status}
-                              </Badge>
-                            </TableCell>
+                      </TableHeader>
+                      <TableBody>
+                        {reportOsByStatus.length === 0 ? (
+                          <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground py-8">{reportLoading ? "Carregando..." : "Sem dados"}</TableCell></TableRow>
+                        ) : reportOsByStatus.map((row: any, i: number) => (
+                          <TableRow key={i} data-testid={`report-os-status-${i}`}>
+                            <TableCell>{getStatusBadge(row.status)}</TableCell>
+                            <TableCell className="text-right">{row.count}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(row.total_value)}</TableCell>
                           </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-                
-                {salesDetailData.length > 0 && (
-                  <div className="mt-4 flex justify-between items-center border-t pt-4">
-                    <div className="text-sm text-muted-foreground">
-                      Total: {salesDetailData.length} vendas
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="os-tech" className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">OS por Técnico</CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => loadReportData("os-by-technician")} data-testid="btn-refresh-os-tech">
+                        <RefreshCw className={`h-4 w-4 mr-2 ${reportLoading ? 'animate-spin' : ''}`} />
+                        Atualizar
+                      </Button>
                     </div>
-                    <div className="flex gap-4">
-                      <div className="text-sm">
-                        <span className="text-muted-foreground">Total Vendido:</span>
-                        <span className="font-bold text-green-600 ml-2">
-                          {formatCurrency(salesDetailData.reduce((sum, s) => sum + parseFloat(s.totalAmount || "0"), 0))}
-                        </span>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Técnico</TableHead>
+                          <TableHead className="text-right">Total OS</TableHead>
+                          <TableHead className="text-right">Concluídas</TableHead>
+                          <TableHead className="text-right">Em Andamento</TableHead>
+                          <TableHead className="text-right">Receita</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {reportOsByTech.length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">{reportLoading ? "Carregando..." : "Sem dados"}</TableCell></TableRow>
+                        ) : reportOsByTech.map((row: any, i: number) => (
+                          <TableRow key={i} data-testid={`report-os-tech-${i}`}>
+                            <TableCell className="font-medium">{row.technician_name || "Não atribuído"}</TableCell>
+                            <TableCell className="text-right">{row.total_os}</TableCell>
+                            <TableCell className="text-right">{row.completed}</TableCell>
+                            <TableCell className="text-right">{row.in_progress}</TableCell>
+                            <TableCell className="text-right font-medium text-green-600">{formatCurrency(row.total_revenue)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="sales-seller" className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Vendas por Vendedor</CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => loadReportData("sales-by-seller")} data-testid="btn-refresh-sales-seller">
+                        <RefreshCw className={`h-4 w-4 mr-2 ${reportLoading ? 'animate-spin' : ''}`} />
+                        Atualizar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Vendedor</TableHead>
+                          <TableHead className="text-right">Total Vendas</TableHead>
+                          <TableHead className="text-right">Receita Total</TableHead>
+                          <TableHead className="text-right">Ticket Médio</TableHead>
+                          <TableHead className="text-right">Dias Ativos</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {reportSalesBySeller.length === 0 ? (
+                          <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">{reportLoading ? "Carregando..." : "Sem dados"}</TableCell></TableRow>
+                        ) : reportSalesBySeller.map((row: any, i: number) => (
+                          <TableRow key={i} data-testid={`report-sales-seller-${i}`}>
+                            <TableCell className="font-medium">{row.sold_by || "Sem vendedor"}</TableCell>
+                            <TableCell className="text-right">{row.total_sales}</TableCell>
+                            <TableCell className="text-right font-medium text-green-600">{formatCurrency(row.total_revenue)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(row.avg_ticket)}</TableCell>
+                            <TableCell className="text-right">{row.active_days}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="margin-imei" className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Margem por IMEI</CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => loadReportData("margin-by-imei")} data-testid="btn-refresh-margin-imei">
+                        <RefreshCw className={`h-4 w-4 mr-2 ${reportLoading ? 'animate-spin' : ''}`} />
+                        Atualizar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="rounded-lg border overflow-auto max-h-[500px]">
+                      <Table>
+                        <TableHeader className="sticky top-0 bg-background">
+                          <TableRow>
+                            <TableHead>Dispositivo</TableHead>
+                            <TableHead>IMEI</TableHead>
+                            <TableHead>Condição</TableHead>
+                            <TableHead className="text-right">Custo</TableHead>
+                            <TableHead className="text-right">Venda</TableHead>
+                            <TableHead className="text-right">Margem</TableHead>
+                            <TableHead className="text-right">%</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {reportMarginByImei.length === 0 ? (
+                            <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">{reportLoading ? "Carregando..." : "Sem dados"}</TableCell></TableRow>
+                          ) : reportMarginByImei.map((row: any, i: number) => (
+                            <TableRow key={i} data-testid={`report-margin-${i}`}>
+                              <TableCell className="font-medium">{row.brand} {row.model}</TableCell>
+                              <TableCell className="font-mono text-sm">{row.imei}</TableCell>
+                              <TableCell>{getConditionBadge(row.condition)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(row.cost)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(row.sale_price)}</TableCell>
+                              <TableCell className={`text-right font-medium ${parseFloat(row.margin) >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(row.margin)}</TableCell>
+                              <TableCell className="text-right">{parseFloat(row.margin_percent || 0).toFixed(1)}%</TableCell>
+                              <TableCell>{getStatusBadge(row.status)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="daily-cash" className="mt-4 space-y-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <Label className="whitespace-nowrap">Data:</Label>
+                        <Input 
+                          type="date" 
+                          value={dailyCashDate}
+                          onChange={(e) => setDailyCashDate(e.target.value)}
+                          className="w-44"
+                          data-testid="input-daily-cash-date"
+                        />
                       </div>
-                      <div className="text-sm">
-                        <span className="text-muted-foreground">Créditos Usados:</span>
-                        <span className="font-bold text-blue-600 ml-2">
-                          {formatCurrency(salesDetailData.reduce((sum, s) => sum + parseFloat(s.creditUsed || "0"), 0))}
-                        </span>
+                      <Button onClick={() => loadReportData("daily-cash")} data-testid="btn-load-daily-cash">
+                        <RefreshCw className={`h-4 w-4 mr-2 ${reportLoading ? 'animate-spin' : ''}`} />
+                        Carregar
+                      </Button>
+                      <div className="ml-auto text-sm text-muted-foreground">
+                        {reportDailyCash?.date && `Exibindo: ${new Date(reportDailyCash.date + 'T12:00:00').toLocaleDateString('pt-BR')}`}
                       </div>
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
+
+                {reportDailyCash ? (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Total Vendas</p>
+                          <p className="text-2xl font-bold text-green-600" data-testid="daily-cash-total">{formatCurrency(reportDailyCash.total_sales)}</p>
+                          <p className="text-xs text-muted-foreground">{reportDailyCash.sale_count} vendas</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Dinheiro</p>
+                          <p className="text-2xl font-bold text-emerald-700">{formatCurrency(reportDailyCash.cash_total)}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Cartão</p>
+                          <p className="text-2xl font-bold text-blue-600">{formatCurrency(reportDailyCash.card_total)}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">PIX</p>
+                          <p className="text-2xl font-bold text-purple-600">{formatCurrency(reportDailyCash.pix_total)}</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Sangrias</p>
+                          <p className="text-xl font-bold text-red-600">-{formatCurrency(reportDailyCash.withdrawals)}</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Reforços</p>
+                          <p className="text-xl font-bold text-blue-600">+{formatCurrency(reportDailyCash.reinforcements)}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="md:col-span-2">
+                        <CardContent className="pt-4">
+                          <p className="text-xs text-muted-foreground">Saldo Caixa (Dinheiro + Reforços - Sangrias)</p>
+                          <p className="text-2xl font-bold">{formatCurrency(
+                            parseFloat(reportDailyCash.cash_total || 0) + 
+                            parseFloat(reportDailyCash.reinforcements || 0) - 
+                            parseFloat(reportDailyCash.withdrawals || 0)
+                          )}</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          Vendas por Vendedor
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {reportDailyCash.bySeller?.length > 0 ? (
+                          <div className="rounded-lg border overflow-auto">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Vendedor</TableHead>
+                                  <TableHead className="text-center">Vendas</TableHead>
+                                  <TableHead className="text-right">Dinheiro</TableHead>
+                                  <TableHead className="text-right">Débito</TableHead>
+                                  <TableHead className="text-right">Crédito</TableHead>
+                                  <TableHead className="text-right">PIX</TableHead>
+                                  <TableHead className="text-right">Combinado</TableHead>
+                                  <TableHead className="text-right">Descontos</TableHead>
+                                  <TableHead className="text-right font-bold">Total</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {reportDailyCash.bySeller.map((seller: any, i: number) => (
+                                  <TableRow key={i} data-testid={`seller-row-${i}`}>
+                                    <TableCell className="font-medium">{seller.sold_by || "Sem vendedor"}</TableCell>
+                                    <TableCell className="text-center">{seller.sale_count}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(seller.cash_total)}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(seller.debit_total)}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(seller.credit_total)}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(seller.pix_total)}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(seller.combined_total)}</TableCell>
+                                    <TableCell className="text-right text-red-500">{parseFloat(seller.total_discount) > 0 ? `-${formatCurrency(seller.total_discount)}` : '-'}</TableCell>
+                                    <TableCell className="text-right font-bold text-green-600">{formatCurrency(seller.total)}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                              <tfoot>
+                                <TableRow className="bg-muted/50 font-semibold">
+                                  <TableCell>TOTAL</TableCell>
+                                  <TableCell className="text-center">{reportDailyCash.sale_count}</TableCell>
+                                  <TableCell className="text-right">{formatCurrency(reportDailyCash.cash_total)}</TableCell>
+                                  <TableCell className="text-right">{formatCurrency(reportDailyCash.bySeller?.reduce((s: number, r: any) => s + parseFloat(r.debit_total || 0), 0))}</TableCell>
+                                  <TableCell className="text-right">{formatCurrency(reportDailyCash.bySeller?.reduce((s: number, r: any) => s + parseFloat(r.credit_total || 0), 0))}</TableCell>
+                                  <TableCell className="text-right">{formatCurrency(reportDailyCash.pix_total)}</TableCell>
+                                  <TableCell className="text-right">{formatCurrency(reportDailyCash.combined_total || 0)}</TableCell>
+                                  <TableCell className="text-right text-red-500">{formatCurrency(reportDailyCash.bySeller?.reduce((s: number, r: any) => s + parseFloat(r.total_discount || 0), 0))}</TableCell>
+                                  <TableCell className="text-right font-bold text-green-600">{formatCurrency(reportDailyCash.total_sales)}</TableCell>
+                                </TableRow>
+                              </tfoot>
+                            </Table>
+                          </div>
+                        ) : (
+                          <p className="text-center text-muted-foreground py-4">Nenhuma venda no período</p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          Listagem de Vendas
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {reportDailyCash.sales?.length > 0 ? (
+                          <div className="rounded-lg border overflow-auto max-h-[400px]">
+                            <Table>
+                              <TableHeader className="sticky top-0 bg-background">
+                                <TableRow>
+                                  <TableHead>Venda</TableHead>
+                                  <TableHead>Hora</TableHead>
+                                  <TableHead>Cliente</TableHead>
+                                  <TableHead>Vendedor</TableHead>
+                                  <TableHead className="text-right">Subtotal</TableHead>
+                                  <TableHead className="text-right">Desconto</TableHead>
+                                  <TableHead className="text-right">Total</TableHead>
+                                  <TableHead>Pagamento</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {reportDailyCash.sales.map((sale: any, i: number) => (
+                                  <TableRow key={i} data-testid={`sale-row-${i}`}>
+                                    <TableCell className="font-mono text-sm">{sale.sale_number}</TableCell>
+                                    <TableCell className="text-sm">{sale.created_at ? new Date(sale.created_at).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}) : '-'}</TableCell>
+                                    <TableCell>{sale.customer_name || "Consumidor"}</TableCell>
+                                    <TableCell>{sale.sold_by || "-"}</TableCell>
+                                    <TableCell className="text-right">{formatCurrency(sale.subtotal)}</TableCell>
+                                    <TableCell className="text-right text-red-500">{parseFloat(sale.discount_amount || 0) > 0 ? `-${formatCurrency(sale.discount_amount)}` : '-'}</TableCell>
+                                    <TableCell className="text-right font-medium">{formatCurrency(sale.total_amount)}</TableCell>
+                                    <TableCell>
+                                      <Badge variant="outline" className="text-xs">
+                                        {sale.payment_method === 'cash' ? 'Dinheiro' : 
+                                         sale.payment_method === 'credit' ? 'Crédito' :
+                                         sale.payment_method === 'debit' ? 'Débito' :
+                                         sale.payment_method === 'pix' ? 'PIX' :
+                                         sale.payment_method === 'combined' ? 'Combinado' :
+                                         sale.payment_method || '-'}
+                                      </Badge>
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        ) : (
+                          <p className="text-center text-muted-foreground py-4">Nenhuma venda registrada nesta data</p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </>
+                ) : (
+                  <Card>
+                    <CardContent className="py-12">
+                      <p className="text-center text-muted-foreground">{reportLoading ? "Carregando..." : "Selecione uma data e clique em Carregar para ver o movimento do dia"}</p>
+                    </CardContent>
+                  </Card>
                 )}
-              </CardContent>
-            </Card>
+              </TabsContent>
+
+              <TabsContent value="stock-turnover" className="mt-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Giro de Estoque</CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => loadReportData("stock-turnover")} data-testid="btn-refresh-stock-turnover">
+                        <RefreshCw className={`h-4 w-4 mr-2 ${reportLoading ? 'animate-spin' : ''}`} />
+                        Atualizar
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="rounded-lg border overflow-auto max-h-[500px]">
+                      <Table>
+                        <TableHeader className="sticky top-0 bg-background">
+                          <TableRow>
+                            <TableHead>Código</TableHead>
+                            <TableHead>Produto</TableHead>
+                            <TableHead>Categoria</TableHead>
+                            <TableHead className="text-right">Estoque Atual</TableHead>
+                            <TableHead className="text-right">Estoque Mínimo</TableHead>
+                            <TableHead className="text-right">Vendas 30d</TableHead>
+                            <TableHead className="text-right">Giro</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {reportStockTurnover.length === 0 ? (
+                            <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">{reportLoading ? "Carregando..." : "Sem dados"}</TableCell></TableRow>
+                          ) : reportStockTurnover.map((row: any, i: number) => (
+                            <TableRow key={i} data-testid={`report-turnover-${i}`}>
+                              <TableCell className="font-mono text-sm">{row.code}</TableCell>
+                              <TableCell className="font-medium">{row.name}</TableCell>
+                              <TableCell>{row.category || "-"}</TableCell>
+                              <TableCell className="text-right">{parseFloat(row.current_stock || 0).toFixed(0)}</TableCell>
+                              <TableCell className="text-right">{parseFloat(row.min_stock || 0).toFixed(0)}</TableCell>
+                              <TableCell className="text-right">{row.sales_30d}</TableCell>
+                              <TableCell className="text-right font-medium">{parseFloat(row.turnover_ratio || 0).toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </TabsContent>
 
           {/* ========== ABA COMISSÕES ========== */}
@@ -4488,6 +5243,7 @@ export default function ArcadiaRetail() {
               </Card>
             </div>
           </TabsContent>
+
 
         </Tabs>
       </div>
@@ -5675,12 +6431,24 @@ export default function ArcadiaRetail() {
                       id="use-credit"
                       checked={useCredit}
                       onChange={(e) => {
-                        setUseCredit(e.target.checked);
-                        if (e.target.checked) {
+                        const checked = e.target.checked;
+                        setUseCredit(checked);
+                        if (checked) {
                           const maxCredit = Math.min(customerTotalCredit, cartSubtotal - cartDiscountTotal - tradeInCredit);
                           setCreditAmountToUse(maxCredit);
+                          if (paymentMethods.length > 0) {
+                            const newTotal = cartSubtotal - cartDiscountTotal - tradeInCredit - maxCredit;
+                            const totalPaid = paymentMethods.reduce((s, p) => s + p.amount, 0);
+                            if (totalPaid > newTotal && paymentMethods.length === 1) {
+                              setPaymentMethods([{ ...paymentMethods[0], amount: Math.max(0, newTotal) }]);
+                            }
+                          }
                         } else {
                           setCreditAmountToUse(0);
+                          if (paymentMethods.length === 1) {
+                            const newTotal = cartSubtotal - cartDiscountTotal - tradeInCredit;
+                            setPaymentMethods([{ ...paymentMethods[0], amount: newTotal }]);
+                          }
                         }
                       }}
                       className="h-4 w-4"
@@ -5704,6 +6472,10 @@ export default function ArcadiaRetail() {
                           cartSubtotal - cartDiscountTotal - tradeInCredit
                         );
                         setCreditAmountToUse(val);
+                        if (paymentMethods.length === 1) {
+                          const newTotal = cartSubtotal - cartDiscountTotal - tradeInCredit - val;
+                          setPaymentMethods([{ ...paymentMethods[0], amount: Math.max(0, newTotal) }]);
+                        }
                       }}
                       className="w-32"
                       step="0.01"
@@ -5722,6 +6494,19 @@ export default function ArcadiaRetail() {
             <div className="space-y-3">
               <Label>Formas de Pagamento</Label>
               
+              {useCredit && creditAmountToUse > 0 && paymentMethods.length === 0 && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
+                  <div className="flex justify-between text-sm text-blue-600">
+                    <span>Crédito aplicado:</span>
+                    <span>- {formatCurrency(creditAmountToUse)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-semibold text-orange-600 bg-orange-50 p-2 rounded">
+                    <span>Saldo a receber:</span>
+                    <span>{formatCurrency(cartTotal > 0 ? cartTotal : 0)}</span>
+                  </div>
+                </div>
+              )}
+
               {paymentMethods.length > 0 && (
                 <div className="space-y-2 p-3 bg-muted rounded-lg">
                   {paymentMethods.map((pm, idx) => (
@@ -5760,24 +6545,45 @@ export default function ArcadiaRetail() {
                       </div>
                     </div>
                   ))}
-                  <div className="flex justify-between text-sm pt-2 border-t">
-                    <span>Total informado:</span>
-                    <span className={paymentMethods.reduce((s, p) => s + p.amount, 0) >= cartTotal ? "text-green-600 font-medium" : "text-orange-600 font-medium"}>
+                  {useCredit && creditAmountToUse > 0 && (
+                    <div className="flex justify-between text-sm pt-2 border-t text-blue-600">
+                      <span>Crédito aplicado:</span>
+                      <span>- {formatCurrency(creditAmountToUse)}</span>
+                    </div>
+                  )}
+                  <div className={`flex justify-between text-sm ${!(useCredit && creditAmountToUse > 0) ? 'pt-2 border-t' : ''}`}>
+                    <span>Total em pagamentos:</span>
+                    <span className={paymentMethods.reduce((s, p) => s + p.amount, 0) >= (cartTotal > 0 ? cartTotal : 0) ? "text-green-600 font-medium" : "text-orange-600 font-medium"}>
                       {formatCurrency(paymentMethods.reduce((s, p) => s + p.amount, 0))}
                     </span>
                   </div>
-                  {paymentMethods.reduce((s, p) => s + p.amount, 0) < cartTotal && (
-                    <div className="flex justify-between text-sm text-orange-600">
-                      <span>Falta:</span>
-                      <span>{formatCurrency(cartTotal - paymentMethods.reduce((s, p) => s + p.amount, 0))}</span>
-                    </div>
-                  )}
-                  {paymentMethods.reduce((s, p) => s + p.amount, 0) > cartTotal && (
-                    <div className="flex justify-between text-sm text-blue-600">
-                      <span>Troco:</span>
-                      <span>{formatCurrency(paymentMethods.reduce((s, p) => s + p.amount, 0) - cartTotal)}</span>
-                    </div>
-                  )}
+                  {(() => {
+                    const totalEffective = cartTotal > 0 ? cartTotal : 0;
+                    const totalPaid = paymentMethods.reduce((s, p) => s + p.amount, 0);
+                    const remaining = totalEffective - totalPaid;
+                    if (remaining > 0) {
+                      return (
+                        <div className="flex justify-between text-sm font-semibold text-orange-600 bg-orange-50 p-2 rounded">
+                          <span>Saldo a receber:</span>
+                          <span>{formatCurrency(remaining)}</span>
+                        </div>
+                      );
+                    } else if (remaining < 0) {
+                      return (
+                        <div className="flex justify-between text-sm font-semibold text-blue-600 bg-blue-50 p-2 rounded">
+                          <span>Troco:</span>
+                          <span>{formatCurrency(Math.abs(remaining))}</span>
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="flex justify-between text-sm font-semibold text-green-600 bg-green-50 p-2 rounded">
+                          <span>Pagamento completo</span>
+                          <CheckCircle className="h-4 w-4" />
+                        </div>
+                      );
+                    }
+                  })()}
                 </div>
               )}
               
@@ -5837,7 +6643,7 @@ export default function ArcadiaRetail() {
             <Button variant="outline" onClick={() => setShowPaymentModal(false)}>Cancelar</Button>
             <Button 
               onClick={finalizeSale} 
-              disabled={paymentMethods.length === 0 || paymentMethods.reduce((s, p) => s + p.amount, 0) < cartTotal}
+              disabled={cartTotal > 0 && (paymentMethods.length === 0 || paymentMethods.reduce((s, p) => s + p.amount, 0) < cartTotal)}
               className="bg-green-600 hover:bg-green-700"
               data-testid="btn-confirm-sale"
             >
@@ -6147,6 +6953,63 @@ export default function ArcadiaRetail() {
       </Dialog>
       
       {/* Trade-In Alert Dialog */}
+      <Dialog open={showSessionRequired} onOpenChange={setShowSessionRequired}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+              Sessão Necessária
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Para iniciar esta operação, selecione a empresa e o vendedor no topo da tela.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <Label>Empresa</Label>
+                <Select value={selectedEmpresaId ? String(selectedEmpresaId) : ""} onValueChange={handleSelectEmpresa}>
+                  <SelectTrigger data-testid="modal-select-empresa">
+                    <SelectValue placeholder="Selecione a Empresa" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {empresas.map(emp => (
+                      <SelectItem key={emp.id} value={String(emp.id)}>
+                        {emp.nomeFantasia || emp.razaoSocial}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Vendedor</Label>
+                <Select value={selectedSellerId ? String(selectedSellerId) : ""} onValueChange={handleSelectSeller}>
+                  <SelectTrigger data-testid="modal-select-vendedor">
+                    <SelectValue placeholder="Selecione o Vendedor" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sellers.map(seller => (
+                      <SelectItem key={seller.id} value={String(seller.id)}>
+                        {seller.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSessionRequired(false)}>Cancelar</Button>
+            <Button 
+              onClick={() => setShowSessionRequired(false)} 
+              disabled={!selectedEmpresaId || !selectedSellerId}
+            >
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showTradeInAlert} onOpenChange={setShowTradeInAlert}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -6492,6 +7355,60 @@ export default function ArcadiaRetail() {
                 </div>
               )}
               
+              {/* Checklist de Avaliação */}
+              <div className="space-y-3">
+                <Label className="text-base font-semibold flex items-center gap-2">
+                  <ClipboardCheck className="h-4 w-4" />
+                  Checklist de Avaliação
+                </Label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {[
+                    { key: "powerOn", label: "Liga normalmente" },
+                    { key: "screenOk", label: "Tela sem defeitos" },
+                    { key: "touchOk", label: "Touch funcionando" },
+                    { key: "buttonsOk", label: "Botões funcionando" },
+                    { key: "camerasOk", label: "Câmeras funcionando" },
+                    { key: "speakerOk", label: "Alto-falante OK" },
+                    { key: "microphoneOk", label: "Microfone OK" },
+                    { key: "chargingOk", label: "Carregamento OK" },
+                    { key: "wifiOk", label: "Wi-Fi funcionando" },
+                    { key: "bluetoothOk", label: "Bluetooth OK" },
+                    { key: "simOk", label: "Chip funcionando" },
+                    { key: "biometricOk", label: "Biometria OK" },
+                    { key: "batteryOk", label: "Bateria em bom estado" },
+                    { key: "sensorsOk", label: "Sensores funcionando" },
+                  ].map((item) => (
+                    <div 
+                      key={item.key}
+                      className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${
+                        osChecklistData[item.key] === true 
+                          ? 'bg-green-50 border-green-300 text-green-800' 
+                          : osChecklistData[item.key] === false 
+                            ? 'bg-red-50 border-red-300 text-red-800' 
+                            : 'bg-muted/20 border-muted'
+                      }`}
+                      onClick={() => {
+                        setOsChecklistData(prev => ({
+                          ...prev,
+                          [item.key]: prev[item.key] === true ? false : prev[item.key] === false ? undefined : true
+                        }));
+                      }}
+                      data-testid={`checklist-${item.key}`}
+                    >
+                      {osChecklistData[item.key] === true ? (
+                        <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
+                      ) : osChecklistData[item.key] === false ? (
+                        <XCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      )}
+                      <span className="text-sm">{item.label}</span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground">Clique para alternar: sem avaliação → OK → com defeito</p>
+              </div>
+
               {/* Valores */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -6528,6 +7445,116 @@ export default function ArcadiaRetail() {
                   rows={3}
                 />
               </div>
+
+              {/* Peças Utilizadas */}
+              <div className="space-y-3">
+                <Label className="text-base font-semibold flex items-center gap-2">
+                  <Package className="h-4 w-4" />
+                  Peças Utilizadas
+                </Label>
+                
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <Input 
+                      placeholder="Buscar peça pelo nome ou código..."
+                      value={osItemSearch}
+                      onChange={(e) => {
+                        setOsItemSearch(e.target.value);
+                        searchOsProducts(e.target.value);
+                      }}
+                      data-testid="input-os-part-search"
+                    />
+                    {osItemResults.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {osItemResults.map((product) => (
+                          <div 
+                            key={product.id}
+                            className="p-2 hover:bg-muted cursor-pointer flex justify-between items-center text-sm"
+                            onClick={() => addOsItem(product)}
+                            data-testid={`os-part-result-${product.id}`}
+                          >
+                            <div>
+                              <span className="font-medium">{product.name}</span>
+                              <span className="text-muted-foreground ml-2">({product.code})</span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-muted-foreground">Estoque: {product.stockQty}</span>
+                              <span className="ml-2 font-medium">R$ {parseFloat(product.costPrice || 0).toFixed(2)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <Input 
+                    type="number"
+                    min={1}
+                    value={osItemQuantity}
+                    onChange={(e) => setOsItemQuantity(parseInt(e.target.value) || 1)}
+                    className="w-20"
+                    placeholder="Qtd"
+                    data-testid="input-os-part-qty"
+                  />
+                </div>
+                
+                {loadingOsItems ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Carregando peças...
+                  </div>
+                ) : osItems.length > 0 ? (
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="p-2 text-left">Peça</th>
+                          <th className="p-2 text-center">Qtd</th>
+                          <th className="p-2 text-right">Unitário</th>
+                          <th className="p-2 text-right">Total</th>
+                          <th className="p-2 text-center">Status</th>
+                          <th className="p-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {osItems.map((item) => (
+                          <tr key={item.id} className="border-t">
+                            <td className="p-2">
+                              <span className="font-medium">{item.itemName}</span>
+                              {item.itemCode && <span className="text-muted-foreground text-xs ml-1">({item.itemCode})</span>}
+                            </td>
+                            <td className="p-2 text-center">{item.quantity}</td>
+                            <td className="p-2 text-right">R$ {parseFloat(item.unitPrice || 0).toFixed(2)}</td>
+                            <td className="p-2 text-right font-medium">R$ {parseFloat(item.totalPrice || 0).toFixed(2)}</td>
+                            <td className="p-2 text-center">
+                              <Badge variant={item.status === 'applied' ? 'default' : item.status === 'removed' ? 'destructive' : 'secondary'} className="text-xs">
+                                {item.status === 'applied' ? 'Aplicada' : item.status === 'removed' ? 'Removida' : 'Pendente'}
+                              </Badge>
+                            </td>
+                            <td className="p-2 text-center">
+                              {item.status === 'pending' && (
+                                <Button variant="ghost" size="sm" onClick={() => removeOsItem(item.id)} data-testid={`btn-remove-part-${item.id}`}>
+                                  <Trash2 className="h-3 w-3 text-red-500" />
+                                </Button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-muted/30">
+                        <tr className="border-t font-semibold">
+                          <td colSpan={3} className="p-2 text-right">Total Peças:</td>
+                          <td className="p-2 text-right">R$ {osItems.reduce((sum, i) => sum + parseFloat(i.totalPrice || 0), 0).toFixed(2)}</td>
+                          <td colSpan={2}></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-3 border rounded-lg bg-muted/20">
+                    Nenhuma peça adicionada. Use a busca acima para adicionar peças.
+                  </p>
+                )}
+              </div>
             </div>
           )}
           
@@ -6545,13 +7572,16 @@ export default function ArcadiaRetail() {
               if (!editingServiceOrder) return;
               
               try {
+                const hasChecklistEntries = Object.keys(osChecklistData).some(k => osChecklistData[k] !== undefined);
                 const updateData: any = {
                   status: osStatus,
                   diagnosisNotes: osNotes,
                   estimatedValue: osEstimatedValue || "0",
                   evaluatedValue: osEvaluatedValue || "0",
                   laborCost: osEvaluatedValue || osEstimatedValue || "0",
-                  partsCost: "0",
+                  partsCost: String(osItems.reduce((sum, i) => sum + parseFloat(i.totalPrice || 0), 0)),
+                  checklistData: osChecklistData,
+                  checklistCompletedBy: hasChecklistEntries ? "user" : null,
                 };
                 
                 if (editingServiceOrder.isInternal) {
@@ -6581,6 +7611,133 @@ export default function ArcadiaRetail() {
               }
             }}>
               Salvar Alterações
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Criar OS Manutenção a partir de Avaliação Aprovada */}
+      <Dialog open={showCreateOsDialog} onOpenChange={setShowCreateOsDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Wrench className="h-5 w-5" />
+              Criar Ordem de Serviço
+            </DialogTitle>
+            <DialogDescription>
+              Criar OS de manutenção para o dispositivo avaliado
+            </DialogDescription>
+          </DialogHeader>
+          
+          {selectedEvaluation && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 p-3 bg-muted/50 rounded-lg text-sm">
+                <div>
+                  <p className="text-muted-foreground">IMEI</p>
+                  <p className="font-mono font-medium">{selectedEvaluation.imei}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Dispositivo</p>
+                  <p className="font-medium">{selectedEvaluation.brand} {selectedEvaluation.model}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Cliente</p>
+                  <p className="font-medium">{selectedEvaluation.customerName}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Valor Avaliado</p>
+                  <p className="font-medium text-green-600">{formatCurrency(selectedEvaluation.estimatedValue || 0)}</p>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Tipo de Serviço</Label>
+                <select 
+                  className="w-full border rounded-md p-2 text-sm"
+                  id="os-service-type"
+                  defaultValue="revision"
+                  data-testid="select-os-service-type"
+                >
+                  <option value="revision">Revisão Geral</option>
+                  <option value="cleaning">Limpeza</option>
+                  <option value="maintenance">Manutenção</option>
+                  <option value="quality_check">Controle de Qualidade</option>
+                  <option value="trade_in_diagnosis">Diagnóstico Trade-In</option>
+                  <option value="trade_in_maintenance">Manutenção Trade-In</option>
+                </select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Descrição do Serviço</Label>
+                <Textarea 
+                  id="os-description"
+                  defaultValue={`Avaliação de Trade-In - ${selectedEvaluation.brand} ${selectedEvaluation.model}`}
+                  rows={2}
+                  data-testid="input-os-description"
+                />
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateOsDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              data-testid="btn-confirm-create-os"
+              onClick={async () => {
+                if (!selectedEvaluation) return;
+                try {
+                  const serviceType = (document.getElementById("os-service-type") as HTMLSelectElement)?.value || "revision";
+                  const description = (document.getElementById("os-description") as HTMLTextAreaElement)?.value || "";
+                  
+                  const osData = {
+                    tenantId: selectedEvaluation.tenantId,
+                    storeId: selectedEvaluation.storeId || retailStores[0]?.id || 1,
+                    imei: selectedEvaluation.imei,
+                    brand: selectedEvaluation.brand,
+                    model: selectedEvaluation.model,
+                    customerName: selectedEvaluation.customerName || "Cliente",
+                    customerPhone: selectedEvaluation.customerPhone || "",
+                    personId: selectedEvaluation.personId,
+                    serviceType: "diagnostic",
+                    internalType: serviceType,
+                    issueDescription: description,
+                    origin: "device_acquisition",
+                    isInternal: true,
+                    sourceEvaluationId: selectedEvaluation.id,
+                    estimatedValue: selectedEvaluation.estimatedValue,
+                  };
+                  
+                  const res = await fetch("/api/retail/service-orders", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify(osData)
+                  });
+                  
+                  if (res.ok) {
+                    const order = await res.json();
+                    await fetch(`/api/retail/evaluations/${selectedEvaluation.id}`, {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      credentials: "include",
+                      body: JSON.stringify({ maintenanceOrderId: order.id })
+                    });
+                    toast({ title: "OS Criada!", description: `Ordem ${order.orderNumber} criada com sucesso.` });
+                    setShowCreateOsDialog(false);
+                    loadServiceOrders();
+                    loadEvaluations();
+                  } else {
+                    const err = await res.json();
+                    throw new Error(err.error || "Erro ao criar OS");
+                  }
+                } catch (error: any) {
+                  toast({ title: "Erro ao criar OS", description: error.message, variant: "destructive" });
+                }
+              }}
+            >
+              Criar OS
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -8842,6 +9999,63 @@ export default function ArcadiaRetail() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowCreditsDialog(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showCashMovementDialog} onOpenChange={setShowCashMovementDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle data-testid="cash-movement-title">
+              {cashMovementType === "withdrawal" ? "Sangria" : "Reforço de Caixa"}
+            </DialogTitle>
+            <DialogDescription>
+              {cashMovementType === "withdrawal" ? "Registrar retirada de dinheiro do caixa" : "Registrar entrada de dinheiro no caixa"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Valor (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0.01"
+                placeholder="0,00"
+                value={cashMovementAmount}
+                onChange={(e) => setCashMovementAmount(e.target.value)}
+                data-testid="input-cash-movement-amount"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Motivo</Label>
+              <Textarea
+                placeholder="Descreva o motivo da movimentação..."
+                value={cashMovementReason}
+                onChange={(e) => setCashMovementReason(e.target.value)}
+                data-testid="input-cash-movement-reason"
+              />
+            </div>
+            {cashMovements.length > 0 && (
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-2">Movimentações Recentes</p>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {cashMovements.slice(0, 5).map((m: any) => (
+                    <div key={m.id} className="flex justify-between text-xs p-2 bg-muted/30 rounded" data-testid={`cash-movement-${m.id}`}>
+                      <span>{m.type === "withdrawal" ? "Sangria" : "Reforço"} - {m.reason || "Sem motivo"}</span>
+                      <span className={m.type === "withdrawal" ? "text-red-600" : "text-green-600"}>
+                        {m.type === "withdrawal" ? "-" : "+"}{formatCurrency(m.amount)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCashMovementDialog(false)} data-testid="btn-cancel-cash-movement">Cancelar</Button>
+            <Button onClick={handleCreateCashMovement} data-testid="btn-confirm-cash-movement">
+              {cashMovementType === "withdrawal" ? "Registrar Sangria" : "Registrar Reforço"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -7,7 +7,7 @@ import {
   Calculator, Receipt, UserCog, Building2, Package, Wallet,
   Hash, ChevronDown, Circle, MessageSquare
 } from "lucide-react";
-import browserIcon from "@assets/arcadia_branding/arcadia_suite_icon.png";
+const browserIcon = "/arcadia_suite_icon.png";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
@@ -777,16 +777,16 @@ export default function Home() {
 
                       <Card
                         className="p-3 hover:shadow-md transition-all border-slate-200 hover:border-primary/30 bg-white group relative cursor-pointer"
-                        data-testid="card-module-erp"
-                        onClick={() => navigate("/erp")}
+                        data-testid="card-module-soe"
+                        onClick={() => navigate("/soe")}
                       >
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-lg bg-purple-500 flex items-center justify-center text-white shadow-sm">
-                            <Package className="h-5 w-5" />
+                            <Building2 className="h-5 w-5" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h3 className="font-medium text-sm truncate">Arcádia ERP</h3>
-                            <p className="text-xs text-slate-400 truncate">Gestão Empresarial</p>
+                            <h3 className="font-medium text-sm truncate">Arcádia SOE</h3>
+                            <p className="text-xs text-slate-400 truncate">Sistema Operacional</p>
                           </div>
                           <ExternalLink className="h-3.5 w-3.5 text-slate-300 group-hover:text-primary" />
                         </div>

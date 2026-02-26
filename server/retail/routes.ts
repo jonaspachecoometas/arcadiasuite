@@ -13,11 +13,40 @@ import {
   retailSellerGoals, retailStoreGoals, retailCommissionClosures, retailCommissionClosureItems,
   retailWarehouseStock, retailStockMovements, retailProductSerials,
   retailStockTransfers, retailStockTransferItems, retailInventories, retailInventoryItems,
-  products, purchaseOrders, purchaseOrderItems, suppliers
+  products, purchaseOrders, purchaseOrderItems, suppliers,
+  tenantEmpresas, tenants, type TenantFeatures,
+  posCashMovements, serviceWarranties
 } from "@shared/schema";
-import { eq, desc, and, ilike, sql, or, asc, inArray, gte, lte } from "drizzle-orm";
+import { eq, desc, and, ilike, sql, or, asc, inArray, gte, lte, isNull, between, count, sum } from "drizzle-orm";
+import { retailPlusSyncService } from "./plus-sync";
 
 const router = Router();
+
+const requireModule = (moduleKey: keyof TenantFeatures) => {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tenantId = (req.user as any)?.tenantId;
+      if (!tenantId) {
+        return res.status(401).json({ error: "Tenant not identified" });
+      }
+      const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+      if (!tenant) {
+        return res.status(404).json({ error: "Tenant not found" });
+      }
+      const features = (tenant?.features as TenantFeatures) || {};
+      if (!features[moduleKey]) {
+        return res.status(403).json({ 
+          error: `Módulo "${moduleKey}" não está ativo para este tenant`,
+          moduleKey,
+          action: "Ative o módulo em Admin → Módulos"
+        });
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  };
+};
 
 const requireAuth = (req: Request, res: Response, next: NextFunction) => {
   if (!req.isAuthenticated()) {
@@ -1108,6 +1137,14 @@ router.get("/devices/imei/:imei", async (req: Request, res: Response) => {
 
 router.post("/devices", async (req: Request, res: Response) => {
   try {
+    if (req.body.imei) {
+      const existing = await db.select({ id: mobileDevices.id }).from(mobileDevices)
+        .where(eq(mobileDevices.imei, req.body.imei))
+        .limit(1);
+      if (existing.length > 0) {
+        return res.status(400).json({ error: "IMEI já cadastrado no sistema. Cada aparelho deve ter um IMEI único." });
+      }
+    }
     const [device] = await db.insert(mobileDevices).values(req.body).returning();
     await db.insert(deviceHistory).values({
       deviceId: device.id,
@@ -1516,11 +1553,61 @@ router.put("/service-orders/:id", async (req: Request, res: Response) => {
     const laborCost = String(parseFloat(req.body.laborCost || 0));
     const totalCost = String(parseFloat(partsCost) + parseFloat(laborCost));
     
+    const updatePayload: any = { ...req.body, partsCost, laborCost, totalCost, updatedAt: sql`CURRENT_TIMESTAMP` };
+    if (req.body.checklistCompletedBy) {
+      updatePayload.checklistCompletedAt = sql`CURRENT_TIMESTAMP`;
+    }
     const [order] = await db.update(serviceOrders)
-      .set({ ...req.body, partsCost, laborCost, totalCost, updatedAt: sql`CURRENT_TIMESTAMP` })
+      .set(updatePayload)
       .where(eq(serviceOrders.id, parseInt(req.params.id)))
       .returning();
     
+    // Auto-deduct parts from stock when OS is completed (RN-02)
+    if (req.body.status === "completed" || req.body.status === "ready_pickup") {
+      const items = await db.select().from(serviceOrderItems)
+        .where(and(
+          eq(serviceOrderItems.serviceOrderId, order.id),
+          eq(serviceOrderItems.itemType, "part"),
+          eq(serviceOrderItems.status, "pending")
+        ));
+      for (const item of items) {
+        if (item.itemCode) {
+          const [product] = await db.select().from(products)
+            .where(eq(products.code, item.itemCode));
+          if (product) {
+            const newQty = Math.max(0, parseFloat(product.stockQty as string || "0") - (item.quantity || 1));
+            await db.update(products)
+              .set({ stockQty: String(newQty) })
+              .where(eq(products.id, product.id));
+          }
+        }
+        await db.update(serviceOrderItems)
+          .set({ status: "applied" })
+          .where(eq(serviceOrderItems.id, item.id));
+      }
+      // Auto-create warranty when OS is completed
+      if (req.body.status === "completed" && order.imei) {
+        const warrantyDays = order.serviceType === "repair" ? 90 : order.serviceType === "maintenance" ? 30 : 60;
+        const startDate = new Date().toISOString().split('T')[0];
+        const endDateObj = new Date();
+        endDateObj.setDate(endDateObj.getDate() + warrantyDays);
+        await db.insert(serviceWarranties).values({
+          tenantId: order.tenantId,
+          storeId: order.storeId,
+          serviceOrderId: order.id,
+          deviceId: order.deviceId,
+          imei: order.imei,
+          serviceType: order.serviceType || "repair",
+          warrantyDays,
+          startDate,
+          endDate: endDateObj.toISOString().split('T')[0],
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          description: `Garantia automática - OS ${order.orderNumber}`
+        });
+      }
+    }
+
     // Se a OS é de Trade-In e tem uma avaliação vinculada, atualizar o status da avaliação também
     if (order.isInternal && order.sourceEvaluationId && req.body.evaluationStatus) {
       const evaluationStatusMap: Record<string, string> = {
@@ -1651,6 +1738,46 @@ router.post("/service-orders/:id/items", async (req: Request, res: Response) => 
   }
 });
 
+router.get("/service-orders/:id/items", async (req: Request, res: Response) => {
+  try {
+    const items = await db.select().from(serviceOrderItems)
+      .where(eq(serviceOrderItems.serviceOrderId, parseInt(req.params.id)))
+      .orderBy(desc(serviceOrderItems.createdAt));
+    res.json(items);
+  } catch (error) {
+    console.error("Error fetching service order items:", error);
+    res.status(500).json({ error: "Failed to fetch items" });
+  }
+});
+
+router.delete("/service-orders/:id/items/:itemId", async (req: Request, res: Response) => {
+  try {
+    const serviceOrderId = parseInt(req.params.id);
+    const itemId = parseInt(req.params.itemId);
+    
+    await db.delete(serviceOrderItems).where(
+      and(
+        eq(serviceOrderItems.id, itemId),
+        eq(serviceOrderItems.serviceOrderId, serviceOrderId)
+      )
+    );
+    
+    const items = await db.select().from(serviceOrderItems)
+      .where(eq(serviceOrderItems.serviceOrderId, serviceOrderId));
+    const partsCost = items.filter(i => i.itemType === 'part').reduce((sum, i) => sum + parseFloat(i.totalPrice as any), 0);
+    const laborCost = items.filter(i => i.itemType === 'labor').reduce((sum, i) => sum + parseFloat(i.totalPrice as any), 0);
+    
+    await db.update(serviceOrders)
+      .set({ partsCost: String(partsCost), laborCost: String(laborCost), totalCost: String(partsCost + laborCost), updatedAt: sql`CURRENT_TIMESTAMP` })
+      .where(eq(serviceOrders.id, serviceOrderId));
+    
+    res.json({ success: true, items });
+  } catch (error) {
+    console.error("Error removing service order item:", error);
+    res.status(500).json({ error: "Failed to remove item" });
+  }
+});
+
 // ========== POS SESSIONS ==========
 router.get("/pos-sessions", async (req: Request, res: Response) => {
   try {
@@ -1723,6 +1850,319 @@ router.put("/pos-sessions/:id/close", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error closing POS session:", error);
     res.status(500).json({ error: "Failed to close session" });
+  }
+});
+
+// ========== CASH MOVEMENTS (Sangria/Reforço) ==========
+router.get("/cash-movements", async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.query;
+    const tenantId = (req.user as any)?.tenantId;
+    const conditions = [];
+    if (sessionId) conditions.push(eq(posCashMovements.sessionId, parseInt(sessionId as string)));
+    if (tenantId) conditions.push(eq(posCashMovements.tenantId, tenantId));
+    const movements = conditions.length > 0
+      ? await db.select().from(posCashMovements).where(and(...conditions)).orderBy(desc(posCashMovements.createdAt))
+      : await db.select().from(posCashMovements).orderBy(desc(posCashMovements.createdAt));
+    res.json(movements);
+  } catch (error) {
+    console.error("Error fetching cash movements:", error);
+    res.status(500).json({ error: "Failed to fetch cash movements" });
+  }
+});
+
+router.post("/cash-movements", async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const [movement] = await db.insert(posCashMovements).values({
+      ...req.body,
+      performedBy: user?.id,
+      performedByName: user?.name || user?.username,
+      tenantId: user?.tenantId
+    }).returning();
+    res.json(movement);
+  } catch (error) {
+    console.error("Error creating cash movement:", error);
+    res.status(500).json({ error: "Failed to create cash movement" });
+  }
+});
+
+// ========== SERVICE WARRANTIES ==========
+router.get("/warranties", async (req: Request, res: Response) => {
+  try {
+    const { imei, status, serviceOrderId } = req.query;
+    const tenantId = (req.user as any)?.tenantId;
+    const conditions = [];
+    if (tenantId) conditions.push(eq(serviceWarranties.tenantId, tenantId));
+    if (imei) conditions.push(eq(serviceWarranties.imei, imei as string));
+    if (status) conditions.push(eq(serviceWarranties.status, status as string));
+    if (serviceOrderId) conditions.push(eq(serviceWarranties.serviceOrderId, parseInt(serviceOrderId as string)));
+    const warranties = conditions.length > 0
+      ? await db.select().from(serviceWarranties).where(and(...conditions)).orderBy(desc(serviceWarranties.createdAt))
+      : await db.select().from(serviceWarranties).orderBy(desc(serviceWarranties.createdAt));
+    res.json(warranties);
+  } catch (error) {
+    console.error("Error fetching warranties:", error);
+    res.status(500).json({ error: "Failed to fetch warranties" });
+  }
+});
+
+router.post("/warranties", async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const startDate = req.body.startDate || new Date().toISOString().split('T')[0];
+    const warrantyDays = parseInt(req.body.warrantyDays || 90);
+    const endDateObj = new Date(startDate);
+    endDateObj.setDate(endDateObj.getDate() + warrantyDays);
+    const endDate = endDateObj.toISOString().split('T')[0];
+    
+    const [warranty] = await db.insert(serviceWarranties).values({
+      ...req.body,
+      startDate,
+      endDate,
+      warrantyDays,
+      tenantId: user?.tenantId
+    }).returning();
+    res.json(warranty);
+  } catch (error) {
+    console.error("Error creating warranty:", error);
+    res.status(500).json({ error: "Failed to create warranty" });
+  }
+});
+
+router.get("/warranties/check/:imei", async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req.user as any)?.tenantId;
+    const today = new Date().toISOString().split('T')[0];
+    const conditions = [
+      eq(serviceWarranties.imei, req.params.imei),
+      eq(serviceWarranties.status, "active"),
+      gte(serviceWarranties.endDate, today)
+    ];
+    if (tenantId) conditions.push(eq(serviceWarranties.tenantId, tenantId));
+    const warranties = await db.select().from(serviceWarranties)
+      .where(and(...conditions))
+      .orderBy(desc(serviceWarranties.endDate));
+    res.json({ hasActiveWarranty: warranties.length > 0, warranties });
+  } catch (error) {
+    console.error("Error checking warranty:", error);
+    res.status(500).json({ error: "Failed to check warranty" });
+  }
+});
+
+router.put("/warranties/:id/claim", async (req: Request, res: Response) => {
+  try {
+    const [warranty] = await db.update(serviceWarranties)
+      .set({ status: "claimed", claimedAt: sql`CURRENT_TIMESTAMP`, claimNotes: req.body.notes })
+      .where(eq(serviceWarranties.id, parseInt(req.params.id)))
+      .returning();
+    res.json(warranty);
+  } catch (error) {
+    console.error("Error claiming warranty:", error);
+    res.status(500).json({ error: "Failed to claim warranty" });
+  }
+});
+
+// ========== STOCK ALERTS ==========
+router.get("/stock-alerts", async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req.user as any)?.tenantId;
+    const conditions = [
+      eq(products.status, "active"),
+      sql`CAST(${products.stockQty} AS NUMERIC) <= CAST(${products.minStock} AS NUMERIC)`,
+      sql`CAST(${products.minStock} AS NUMERIC) > 0`
+    ];
+    if (tenantId) conditions.push(eq(products.tenantId, tenantId));
+    const lowStockProducts = await db.select().from(products)
+      .where(and(...conditions))
+      .orderBy(asc(products.name));
+    res.json(lowStockProducts);
+  } catch (error) {
+    console.error("Error fetching stock alerts:", error);
+    res.status(500).json({ error: "Failed to fetch stock alerts" });
+  }
+});
+
+// ========== REPORTS ==========
+router.get("/reports/os-by-status", async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req.user as any)?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: "Tenant not identified" });
+    const result = await db.execute(sql`
+      SELECT status, COUNT(*) as count,
+        COALESCE(SUM(CAST(total_cost AS NUMERIC)), 0) as total_value
+      FROM service_orders WHERE tenant_id = ${tenantId}
+      GROUP BY status ORDER BY count DESC
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching OS report:", error);
+    res.status(500).json({ error: "Failed to fetch report" });
+  }
+});
+
+router.get("/reports/os-by-technician", async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req.user as any)?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: "Tenant not identified" });
+    const result = await db.execute(sql`
+      SELECT technician_name, 
+        COUNT(*) as total_os,
+        COUNT(*) FILTER (WHERE status = 'completed') as completed,
+        COUNT(*) FILTER (WHERE status IN ('open','diagnosis','in_repair')) as in_progress,
+        COALESCE(SUM(CAST(total_cost AS NUMERIC)) FILTER (WHERE status = 'completed'), 0) as total_revenue
+      FROM service_orders
+      WHERE technician_name IS NOT NULL AND tenant_id = ${tenantId}
+      GROUP BY technician_name ORDER BY total_os DESC
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching technician report:", error);
+    res.status(500).json({ error: "Failed to fetch report" });
+  }
+});
+
+router.get("/reports/sales-by-seller", async (req: Request, res: Response) => {
+  try {
+    const { dateFrom, dateTo } = req.query;
+    const tenantId = (req.user as any)?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: "Tenant not identified" });
+    let dateFilter = sql`TRUE`;
+    if (dateFrom && dateTo) {
+      dateFilter = sql`created_at >= ${dateFrom}::date AND created_at <= (${dateTo}::date + INTERVAL '1 day')`;
+    } else {
+      dateFilter = sql`DATE(created_at) >= CURRENT_DATE - INTERVAL '30 days'`;
+    }
+    const tenantFilter = sql`AND tenant_id = ${tenantId}`;
+    const result = await db.execute(sql`
+      SELECT sold_by,
+        COUNT(*) as total_sales,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)), 0) as total_revenue,
+        COALESCE(AVG(CAST(total_amount AS NUMERIC)), 0) as avg_ticket,
+        COUNT(DISTINCT DATE(created_at)) as active_days
+      FROM pos_sales
+      WHERE status = 'completed' AND ${dateFilter} ${tenantFilter}
+      GROUP BY sold_by ORDER BY total_revenue DESC
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching sales report:", error);
+    res.status(500).json({ error: "Failed to fetch report" });
+  }
+});
+
+router.get("/reports/margin-by-imei", async (req: Request, res: Response) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT d.id, d.brand, d.model, d.imei, d.condition,
+        CAST(d.purchase_price AS NUMERIC) as cost,
+        CAST(d.selling_price AS NUMERIC) as sale_price,
+        CAST(d.selling_price AS NUMERIC) - CAST(d.purchase_price AS NUMERIC) as margin,
+        CASE WHEN CAST(d.purchase_price AS NUMERIC) > 0 
+          THEN ROUND(((CAST(d.selling_price AS NUMERIC) - CAST(d.purchase_price AS NUMERIC)) / CAST(d.purchase_price AS NUMERIC)) * 100, 2)
+          ELSE 0 END as margin_percent,
+        d.status
+      FROM mobile_devices d
+      WHERE d.purchase_price IS NOT NULL AND CAST(d.purchase_price AS NUMERIC) > 0
+      ORDER BY margin DESC
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching margin report:", error);
+    res.status(500).json({ error: "Failed to fetch report" });
+  }
+});
+
+router.get("/reports/daily-cash", async (req: Request, res: Response) => {
+  try {
+    const { date } = req.query;
+    const tenantId = (req.user as any)?.tenantId;
+    if (!tenantId) return res.status(403).json({ error: "Tenant not identified" });
+    const targetDate = date ? String(date) : new Date().toISOString().split('T')[0];
+    const tenantFilter = sql`AND tenant_id = ${tenantId}`;
+    
+    const summaryResult = await db.execute(sql`
+      SELECT 
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)), 0) as total_sales,
+        COUNT(*) as sale_count,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'cash'), 0) as cash_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method IN ('credit','debit')), 0) as card_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'pix'), 0) as pix_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'combined'), 0) as combined_total
+      FROM pos_sales 
+      WHERE status = 'completed' AND DATE(created_at) = ${targetDate}::date ${tenantFilter}
+    `);
+    
+    const movementsResult = await db.execute(sql`
+      SELECT
+        COALESCE(SUM(CAST(amount AS NUMERIC)) FILTER (WHERE type = 'withdrawal'), 0) as withdrawals,
+        COALESCE(SUM(CAST(amount AS NUMERIC)) FILTER (WHERE type = 'reinforcement'), 0) as reinforcements
+      FROM pos_cash_movements 
+      WHERE DATE(created_at) = ${targetDate}::date ${tenantFilter}
+    `);
+    
+    const salesResult = await db.execute(sql`
+      SELECT id, sale_number, customer_name, total_amount, payment_method, sold_by, 
+        discount_amount, subtotal, created_at, notes
+      FROM pos_sales 
+      WHERE status = 'completed' AND DATE(created_at) = ${targetDate}::date ${tenantFilter}
+      ORDER BY created_at DESC
+    `);
+    
+    const bySellerResult = await db.execute(sql`
+      SELECT 
+        sold_by,
+        COUNT(*) as sale_count,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)), 0) as total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'cash'), 0) as cash_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method IN ('credit','debit')), 0) as card_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'credit'), 0) as credit_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'debit'), 0) as debit_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'pix'), 0) as pix_total,
+        COALESCE(SUM(CAST(total_amount AS NUMERIC)) FILTER (WHERE payment_method = 'combined'), 0) as combined_total,
+        COALESCE(SUM(CAST(discount_amount AS NUMERIC)), 0) as total_discount
+      FROM pos_sales 
+      WHERE status = 'completed' AND DATE(created_at) = ${targetDate}::date ${tenantFilter}
+      GROUP BY sold_by
+      ORDER BY total DESC
+    `);
+    
+    const summary = (summaryResult.rows as any[])?.[0] || {};
+    const movements = (movementsResult.rows as any[])?.[0] || {};
+    
+    res.json({
+      ...summary,
+      withdrawals: movements.withdrawals || 0,
+      reinforcements: movements.reinforcements || 0,
+      sales: salesResult.rows || [],
+      bySeller: bySellerResult.rows || [],
+      date: targetDate
+    });
+  } catch (error) {
+    console.error("Error fetching daily cash report:", error);
+    res.status(500).json({ error: "Failed to fetch report" });
+  }
+});
+
+router.get("/reports/stock-turnover", async (req: Request, res: Response) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT p.id, p.code, p.name, p.category,
+        CAST(p.stock_qty AS NUMERIC) as current_stock,
+        CAST(p.min_stock AS NUMERIC) as min_stock,
+        COALESCE((SELECT COUNT(*) FROM pos_sale_items psi WHERE psi.item_code = p.code AND psi.created_at >= CURRENT_DATE - INTERVAL '30 days'), 0) as sales_30d,
+        CASE WHEN CAST(p.stock_qty AS NUMERIC) > 0 
+          THEN ROUND(COALESCE((SELECT COUNT(*) FROM pos_sale_items psi WHERE psi.item_code = p.code AND psi.created_at >= CURRENT_DATE - INTERVAL '30 days'), 0)::numeric / CAST(p.stock_qty AS NUMERIC), 2)
+          ELSE 0 END as turnover_ratio
+      FROM products p
+      WHERE p.status = 'active'
+      ORDER BY turnover_ratio DESC
+      LIMIT 50
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching stock turnover:", error);
+    res.status(500).json({ error: "Failed to fetch report" });
   }
 });
 
@@ -2078,8 +2518,19 @@ router.put("/transfers/:id/receive", async (req: Request, res: Response) => {
 // ========== PDV PRODUCTS ==========
 router.get("/pdv-products", async (req: Request, res: Response) => {
   try {
+    const tenantId = (req.user as any)?.tenantId;
+    const conditions = [
+      eq(products.status, "active"),
+      or(
+        eq(products.trackingType, "none"),
+        isNull(products.trackingType)
+      )
+    ];
+    if (tenantId) {
+      conditions.push(eq(products.tenantId, tenantId));
+    }
     const allProducts = await db.select().from(products)
-      .where(eq(products.status, "active"))
+      .where(and(...conditions))
       .orderBy(asc(products.name));
     res.json(allProducts);
   } catch (error) {
@@ -2898,7 +3349,7 @@ router.post("/evaluations/:id/approve-and-process", async (req: Request, res: Re
     // 3. Record in IMEI history
     await db.insert(imeiHistory).values({
       tenantId: evaluation.tenantId,
-      deviceId: null as any, // Will be created when OS is finalized
+      deviceId: null as any,
       imei: evaluation.imei,
       action: "trade_in_approved",
       newStatus: "in_revision",
@@ -2909,12 +3360,47 @@ router.post("/evaluations/:id/approve-and-process", async (req: Request, res: Re
       createdBy: (req.user as any)?.id,
       createdByName: (req.user as any)?.name || "Sistema",
     });
+
+    // 4. Generate customer credit if person and value are valid
+    let credit = null;
+    const personId = evaluation.personId;
+    const estimatedValueNum = evaluation.estimatedValue ? parseFloat(evaluation.estimatedValue) : 0;
+    if (personId && estimatedValueNum > 0) {
+      let customerCpf = null;
+      let customerName = evaluation.customerName || "Cliente";
+      const [person] = await db.select().from(persons)
+        .where(eq(persons.id, personId))
+        .limit(1);
+      if (person) {
+        customerCpf = person.cpfCnpj;
+        customerName = person.fullName;
+      }
+
+      [credit] = await db.insert(customerCredits).values({
+        storeId: evaluation.storeId || undefined,
+        personId: personId,
+        customerName,
+        customerCpf: customerCpf || undefined,
+        amount: evaluation.estimatedValue!,
+        remainingAmount: evaluation.estimatedValue!,
+        origin: "trade_in",
+        originId: evaluation.id,
+        description: `Trade-In: ${evaluation.brand} ${evaluation.model} (IMEI: ${evaluation.imei})`,
+        status: "active",
+        createdBy: (req.user as any)?.id
+      }).returning();
+
+      await db.update(deviceEvaluations)
+        .set({ creditGenerated: true, creditId: credit.id })
+        .where(eq(deviceEvaluations.id, evaluationId));
+    }
     
     res.json({
       success: true,
       message: "Trade-In aprovado e O.S. Interna criada com sucesso",
       evaluation: { ...evaluation, status: "approved" },
       serviceOrder,
+      credit,
       nextStep: "Realize a revisão/manutenção do dispositivo e finalize a O.S. para entrada no estoque"
     });
   } catch (error) {
@@ -4601,6 +5087,130 @@ router.post("/customer-credits/:creditId/use", async (req: Request, res: Respons
   } catch (error) {
     console.error("Error using credit:", error);
     res.status(500).json({ error: "Failed to use credit" });
+  }
+});
+
+// ========== PLUS ERP SYNC ROUTES ==========
+
+const plusSync = retailPlusSyncService;
+
+router.get("/plus/status", async (req: Request, res: Response) => {
+  try {
+    const status = await plusSync.getPlusStatus();
+    res.json(status);
+  } catch (error) {
+    console.error("Error checking Plus status:", error);
+    res.status(500).json({ error: "Failed to check Plus connection" });
+  }
+});
+
+router.post("/plus/sync/customers", requireModule("plus"), async (req: Request, res: Response) => {
+  try {
+    const { tenantId, empresaId } = req.body;
+    if (!tenantId) return res.status(400).json({ error: "tenantId required" });
+    const result = await plusSync.syncAllPersonsToPlus(tenantId, empresaId);
+    res.json(result);
+  } catch (error) {
+    console.error("Error syncing customers to Plus:", error);
+    res.status(500).json({ error: "Failed to sync customers" });
+  }
+});
+
+router.post("/plus/sync/sales", requireModule("plus"), async (req: Request, res: Response) => {
+  try {
+    const { saleId } = req.body;
+    if (!saleId) return res.status(400).json({ error: "saleId required" });
+    const result = await plusSync.syncSaleToPlus(saleId);
+    res.json(result);
+  } catch (error) {
+    console.error("Error syncing sale to Plus:", error);
+    res.status(500).json({ error: "Failed to sync sale" });
+  }
+});
+
+router.post("/plus/sync/nfe", requireModule("plus"), async (req: Request, res: Response) => {
+  try {
+    const { saleId, tipo } = req.body;
+    if (!saleId) return res.status(400).json({ error: "saleId required" });
+    const result = await plusSync.emitirNFeSale(saleId, tipo || "nfce");
+    res.json(result);
+  } catch (error) {
+    console.error("Error emitting NF-e:", error);
+    res.status(500).json({ error: "Failed to emit NF-e" });
+  }
+});
+
+router.post("/plus/import/customers", requireModule("plus"), async (req: Request, res: Response) => {
+  try {
+    const { tenantId, empresaId } = req.body;
+    if (!tenantId) return res.status(400).json({ error: "tenantId required" });
+    const result = await plusSync.importClientesFromPlus(tenantId, empresaId);
+    res.json(result);
+  } catch (error) {
+    console.error("Error importing customers from Plus:", error);
+    res.status(500).json({ error: "Failed to import customers" });
+  }
+});
+
+router.post("/plus/import/products", requireModule("plus"), async (req: Request, res: Response) => {
+  try {
+    const { tenantId, empresaId } = req.body;
+    if (!tenantId) return res.status(400).json({ error: "tenantId required" });
+    const result = await plusSync.importProdutosFromPlus(tenantId, empresaId);
+    res.json(result);
+  } catch (error) {
+    console.error("Error importing products from Plus:", error);
+    res.status(500).json({ error: "Failed to import products" });
+  }
+});
+
+router.get("/plus/empresas", async (req: Request, res: Response) => {
+  try {
+    const tenantId = parseInt(req.query.tenantId as string) || 1;
+    const empresas = await db.select().from(tenantEmpresas)
+      .where(and(eq(tenantEmpresas.tenantId, tenantId), eq(tenantEmpresas.status, "active")));
+    res.json(empresas);
+  } catch (error) {
+    console.error("Error fetching empresas:", error);
+    res.status(500).json({ error: "Failed to fetch empresas" });
+  }
+});
+
+router.post("/plus/empresas", async (req: Request, res: Response) => {
+  try {
+    const tenantId = parseInt(req.body.tenantId as string) || 1;
+    const { razaoSocial, nomeFantasia, cnpj, tipo } = req.body;
+    if (!razaoSocial || !cnpj) return res.status(400).json({ error: "razaoSocial and cnpj required" });
+    const [empresa] = await db.insert(tenantEmpresas).values({
+      tenantId,
+      razaoSocial,
+      nomeFantasia: nomeFantasia || razaoSocial,
+      cnpj,
+      tipo: tipo || "matriz",
+      status: "active",
+    }).returning();
+    res.json(empresa);
+  } catch (error) {
+    console.error("Error creating empresa:", error);
+    res.status(500).json({ error: "Failed to create empresa" });
+  }
+});
+
+router.post("/plus/empresas/:id/bind", async (req: Request, res: Response) => {
+  try {
+    const empresaLocalId = parseInt(req.params.id);
+    const { plusEmpresaId } = req.body;
+    if (!plusEmpresaId) return res.status(400).json({ error: "plusEmpresaId required" });
+
+    const [updated] = await db.update(tenantEmpresas)
+      .set({ plusEmpresaId })
+      .where(eq(tenantEmpresas.id, empresaLocalId))
+      .returning();
+    
+    res.json(updated);
+  } catch (error) {
+    console.error("Error binding empresa to Plus:", error);
+    res.status(500).json({ error: "Failed to bind empresa" });
   }
 });
 
