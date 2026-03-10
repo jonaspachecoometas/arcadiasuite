@@ -15,8 +15,8 @@ const octokit = new Octokit({
   auth: process.env.GITHUB_TOKEN,
 });
 
-const ARCADIA_OWNER = process.env.GITHUB_OWNER || "JonasRodriguesPachceo";
-const ARCADIA_REPO = process.env.GITHUB_REPO || "ArcadiaSuite-";
+const ARCADIA_OWNER = process.env.GITHUB_OWNER || "jonaspachecoometas";
+const ARCADIA_REPO = process.env.GITHUB_REPO || "arcadiasuite";
 const DEFAULT_BRANCH = process.env.GITHUB_DEFAULT_BRANCH || "main";
 
 interface FileContent {

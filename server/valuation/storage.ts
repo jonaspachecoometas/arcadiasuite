@@ -21,6 +21,13 @@ import {
   valuationSectorScores,
   valuationCanvasBlocks,
   valuationCanvasSnapshots,
+  valuationGovernance,
+  valuationPdca,
+  valuationSwot,
+  valuationResults,
+  valuationAssets,
+  valuationReports,
+  valuationAiLog,
   crmClients,
   InsertValuationProject,
   InsertValuationInput,
@@ -39,6 +46,13 @@ import {
   InsertValuationSectorBenchmark,
   InsertValuationSectorScore,
   InsertValuationCanvasSnapshot,
+  InsertValuationGovernance,
+  InsertValuationPdca,
+  InsertValuationSwot,
+  InsertValuationResult,
+  InsertValuationAsset,
+  InsertValuationReport,
+  InsertValuationAiLog,
 } from "@shared/schema";
 
 export const valuationStorage = {
@@ -705,5 +719,227 @@ export const valuationStorage = {
       .from(valuationCanvasSnapshots)
       .where(eq(valuationCanvasSnapshots.id, id));
     return snapshot;
+  },
+
+  // ========== GOVERNANCE ==========
+  async getGovernanceCriteria(projectId: number) {
+    return await db
+      .select()
+      .from(valuationGovernance)
+      .where(eq(valuationGovernance.projectId, projectId))
+      .orderBy(valuationGovernance.criterionCode);
+  },
+
+  async getGovernanceCriterion(id: number, projectId: number) {
+    const [c] = await db
+      .select()
+      .from(valuationGovernance)
+      .where(and(eq(valuationGovernance.id, id), eq(valuationGovernance.projectId, projectId)));
+    return c;
+  },
+
+  async createGovernanceCriterion(data: InsertValuationGovernance) {
+    const [c] = await db.insert(valuationGovernance).values(data).returning();
+    return c;
+  },
+
+  async updateGovernanceCriterion(id: number, projectId: number, data: Partial<InsertValuationGovernance>) {
+    const [c] = await db
+      .update(valuationGovernance)
+      .set(data)
+      .where(and(eq(valuationGovernance.id, id), eq(valuationGovernance.projectId, projectId)))
+      .returning();
+    return c;
+  },
+
+  async deleteGovernanceCriterion(id: number, projectId: number) {
+    const r = await db
+      .delete(valuationGovernance)
+      .where(and(eq(valuationGovernance.id, id), eq(valuationGovernance.projectId, projectId)))
+      .returning();
+    return r.length > 0;
+  },
+
+  async initializeGovernance(projectId: number, criteria: InsertValuationGovernance[]) {
+    const existing = await this.getGovernanceCriteria(projectId);
+    if (existing.length > 0) return existing;
+    const results = [];
+    for (const c of criteria) {
+      const [created] = await db.insert(valuationGovernance).values({ ...c, projectId }).returning();
+      results.push(created);
+    }
+    return results;
+  },
+
+  // ========== PDCA ==========
+  async getPdcaItems(projectId: number) {
+    return await db
+      .select()
+      .from(valuationPdca)
+      .where(eq(valuationPdca.projectId, projectId))
+      .orderBy(desc(valuationPdca.createdAt));
+  },
+
+  async getPdcaItem(id: number, projectId: number) {
+    const [item] = await db
+      .select()
+      .from(valuationPdca)
+      .where(and(eq(valuationPdca.id, id), eq(valuationPdca.projectId, projectId)));
+    return item;
+  },
+
+  async createPdcaItem(data: InsertValuationPdca) {
+    const [item] = await db.insert(valuationPdca).values(data).returning();
+    return item;
+  },
+
+  async updatePdcaItem(id: number, projectId: number, data: Partial<InsertValuationPdca>) {
+    const [item] = await db
+      .update(valuationPdca)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(valuationPdca.id, id), eq(valuationPdca.projectId, projectId)))
+      .returning();
+    return item;
+  },
+
+  async deletePdcaItem(id: number, projectId: number) {
+    const r = await db
+      .delete(valuationPdca)
+      .where(and(eq(valuationPdca.id, id), eq(valuationPdca.projectId, projectId)))
+      .returning();
+    return r.length > 0;
+  },
+
+  // ========== SWOT ==========
+  async getSwotItems(projectId: number) {
+    return await db
+      .select()
+      .from(valuationSwot)
+      .where(eq(valuationSwot.projectId, projectId))
+      .orderBy(valuationSwot.orderIndex);
+  },
+
+  async getSwotItem(id: number, projectId: number) {
+    const [item] = await db
+      .select()
+      .from(valuationSwot)
+      .where(and(eq(valuationSwot.id, id), eq(valuationSwot.projectId, projectId)));
+    return item;
+  },
+
+  async createSwotItem(data: InsertValuationSwot) {
+    const [item] = await db.insert(valuationSwot).values(data).returning();
+    return item;
+  },
+
+  async updateSwotItem(id: number, projectId: number, data: Partial<InsertValuationSwot>) {
+    const [item] = await db
+      .update(valuationSwot)
+      .set(data)
+      .where(and(eq(valuationSwot.id, id), eq(valuationSwot.projectId, projectId)))
+      .returning();
+    return item;
+  },
+
+  async deleteSwotItem(id: number, projectId: number) {
+    const r = await db
+      .delete(valuationSwot)
+      .where(and(eq(valuationSwot.id, id), eq(valuationSwot.projectId, projectId)))
+      .returning();
+    return r.length > 0;
+  },
+
+  // ========== RESULTS ==========
+  async getResults(projectId: number) {
+    return await db
+      .select()
+      .from(valuationResults)
+      .where(eq(valuationResults.projectId, projectId))
+      .orderBy(desc(valuationResults.calculatedAt));
+  },
+
+  async createResult(data: InsertValuationResult) {
+    const [r] = await db.insert(valuationResults).values(data).returning();
+    return r;
+  },
+
+  async deleteResults(projectId: number) {
+    await db.delete(valuationResults).where(eq(valuationResults.projectId, projectId));
+  },
+
+  // ========== ASSETS ==========
+  async getAssets(projectId: number) {
+    return await db
+      .select()
+      .from(valuationAssets)
+      .where(eq(valuationAssets.projectId, projectId))
+      .orderBy(valuationAssets.name);
+  },
+
+  async getAsset(id: number, projectId: number) {
+    const [a] = await db
+      .select()
+      .from(valuationAssets)
+      .where(and(eq(valuationAssets.id, id), eq(valuationAssets.projectId, projectId)));
+    return a;
+  },
+
+  async createAsset(data: InsertValuationAsset) {
+    const [a] = await db.insert(valuationAssets).values(data).returning();
+    return a;
+  },
+
+  async updateAsset(id: number, projectId: number, data: Partial<InsertValuationAsset>) {
+    const [a] = await db
+      .update(valuationAssets)
+      .set(data)
+      .where(and(eq(valuationAssets.id, id), eq(valuationAssets.projectId, projectId)))
+      .returning();
+    return a;
+  },
+
+  async deleteAsset(id: number, projectId: number) {
+    const r = await db
+      .delete(valuationAssets)
+      .where(and(eq(valuationAssets.id, id), eq(valuationAssets.projectId, projectId)))
+      .returning();
+    return r.length > 0;
+  },
+
+  // ========== REPORTS ==========
+  async getReports(projectId: number) {
+    return await db
+      .select()
+      .from(valuationReports)
+      .where(eq(valuationReports.projectId, projectId))
+      .orderBy(desc(valuationReports.generatedAt));
+  },
+
+  async createReport(data: InsertValuationReport) {
+    const [r] = await db.insert(valuationReports).values(data).returning();
+    return r;
+  },
+
+  async deleteReport(id: number, projectId: number) {
+    const r = await db
+      .delete(valuationReports)
+      .where(and(eq(valuationReports.id, id), eq(valuationReports.projectId, projectId)))
+      .returning();
+    return r.length > 0;
+  },
+
+  // ========== AI LOG ==========
+  async getAiLogs(projectId: number, limit: number = 20) {
+    return await db
+      .select()
+      .from(valuationAiLog)
+      .where(eq(valuationAiLog.projectId, projectId))
+      .orderBy(desc(valuationAiLog.createdAt))
+      .limit(limit);
+  },
+
+  async createAiLog(data: InsertValuationAiLog) {
+    const [log] = await db.insert(valuationAiLog).values(data).returning();
+    return log;
   },
 };

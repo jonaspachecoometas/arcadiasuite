@@ -13,7 +13,23 @@ import {
   insertValuationDocumentSchema,
   insertValuationCanvasSchema,
   insertValuationAgentInsightSchema,
+  insertValuationGovernanceSchema,
+  insertValuationPdcaSchema,
+  insertValuationSwotSchema,
+  insertValuationAssetSchema,
 } from "@shared/schema";
+import {
+  runFullValuation,
+  sensitivityAnalysis,
+  calculateWACC,
+  calculateGovernanceImpact,
+  generateProjections,
+  calculateScenarioWeighted,
+  type FinancialData,
+  type AssumptionData,
+  type GovernanceCriterion,
+} from "./engine";
+import { GOVERNANCE_CRITERIA, CHECKLIST_ITEMS, CANVAS_BLOCKS } from "./constants";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import OpenAI from "openai";
@@ -1287,6 +1303,914 @@ router.post("/projects/:id/canvas/snapshots", requireAuth, async (req, res) => {
     res.status(201).json(snapshot);
   } catch (error) {
     res.status(500).json({ error: "Failed to create snapshot" });
+  }
+});
+
+// ========== CALCULATION ENGINE ==========
+router.post("/projects/:id/calculate", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const inputs = await valuationStorage.getInputs(project.id);
+    const assumptions = await valuationStorage.getAssumptions(project.id);
+    const govCriteria = await valuationStorage.getGovernanceCriteria(project.id);
+    const assets = await valuationStorage.getAssets(project.id);
+
+    const financials: FinancialData[] = inputs.map((i) => ({
+      year: i.year,
+      isProjection: i.isProjection || 0,
+      revenue: parseFloat(i.revenue || "0"),
+      grossRevenue: parseFloat(i.grossRevenue || "0"),
+      cogs: parseFloat(i.cogs || "0"),
+      grossProfit: parseFloat(i.grossProfit || "0"),
+      operatingExpenses: parseFloat(i.operatingExpenses || "0"),
+      ebitda: parseFloat(i.ebitda || "0"),
+      ebit: parseFloat(i.ebit || "0"),
+      netIncome: parseFloat(i.netIncome || "0"),
+      totalAssets: parseFloat(i.totalAssets || "0"),
+      totalLiabilities: parseFloat(i.totalLiabilities || "0"),
+      totalEquity: parseFloat(i.totalEquity || "0"),
+      cash: parseFloat(i.cash || "0"),
+      debt: parseFloat(i.debt || "0"),
+      workingCapital: parseFloat(i.workingCapital || "0"),
+      capex: parseFloat(i.capex || "0"),
+      depreciation: parseFloat(i.depreciation || "0"),
+      freeCashFlow: parseFloat(i.freeCashFlow || "0"),
+      cashFlowOperations: parseFloat(i.cashFlowOperations || "0"),
+      headcount: i.headcount || 0,
+      growthRate: parseFloat(i.growthRate || "0"),
+    }));
+
+    const historical = financials.filter((f) => !f.isProjection);
+    let projected = financials.filter((f) => f.isProjection);
+
+    if (projected.length === 0 && historical.length > 0) {
+      projected = generateProjections(historical, {});
+    }
+
+    const allFinancials = [...historical, ...projected];
+
+    const firstAssumption = assumptions[0];
+    const assumptionData: AssumptionData = {
+      riskFreeRate: parseFloat(firstAssumption?.value || "0.1050"),
+      betaUnlevered: 0.8,
+      marketPremium: 0.065,
+      countryRisk: 0.025,
+      sizePremium: 0.035,
+      specificRisk: 0.02,
+      costOfDebt: 0.12,
+      taxRate: 0.34,
+      equityRatio: 0.7,
+      debtRatio: 0.3,
+      terminalGrowth: 0.035,
+      projectionYears: 5,
+    };
+
+    for (const a of assumptions) {
+      const key = a.key;
+      const val = parseFloat(a.value || "0");
+      if (key === "risk_free_rate") assumptionData.riskFreeRate = val;
+      if (key === "beta") assumptionData.betaUnlevered = val;
+      if (key === "market_premium") assumptionData.marketPremium = val;
+      if (key === "country_risk") assumptionData.countryRisk = val;
+      if (key === "size_premium") assumptionData.sizePremium = val;
+      if (key === "specific_risk") assumptionData.specificRisk = val;
+      if (key === "cost_of_debt") assumptionData.costOfDebt = val;
+      if (key === "tax_rate") assumptionData.taxRate = val;
+      if (key === "equity_ratio") assumptionData.equityRatio = val;
+      if (key === "debt_ratio") assumptionData.debtRatio = val;
+      if (key === "terminal_growth") assumptionData.terminalGrowth = val;
+    }
+
+    const sectorBenchmarks = await valuationStorage.getSectorBenchmarks(project.sector);
+    const evEbitdaBench = sectorBenchmarks.find((b) => b.indicatorCode === "ev_ebitda");
+    const evRevenueBench = sectorBenchmarks.find((b) => b.indicatorCode === "ev_revenue");
+
+    const multiples = {
+      evEbitda: parseFloat(evEbitdaBench?.median || "8"),
+      evRevenue: parseFloat(evRevenueBench?.median || "2"),
+    };
+
+    const projectType = (project.projectType as "simple" | "governance") || "simple";
+    const scenarios = ["conservative", "base", "optimistic"] as const;
+    const scenarioResults: { scenario: string; ev: number; equity: number }[] = [];
+
+    await valuationStorage.deleteResults(project.id);
+
+    for (const scenario of scenarios) {
+      const govCriteriaData: GovernanceCriterion[] = govCriteria.map((g) => ({
+        currentScore: g.currentScore || 0,
+        targetScore: g.targetScore || 10,
+        weight: parseFloat(g.weight || "5"),
+        valuationImpactPct: parseFloat(g.valuationImpactPct || "0"),
+        equityImpactPct: parseFloat(g.equityImpactPct || "0"),
+        roeImpactPct: parseFloat(g.roeImpactPct || "0"),
+      }));
+
+      const assetData = assets.map((a) => ({
+        bookValue: parseFloat(a.bookValue || "0"),
+        marketValue: parseFloat(a.marketValue || "0"),
+        appraisedValue: a.appraisedValue ? parseFloat(a.appraisedValue) : undefined,
+      }));
+
+      const result = runFullValuation({
+        financials: allFinancials,
+        assumptions: assumptionData,
+        multiples,
+        assets: assetData,
+        governanceCriteria: govCriteriaData,
+        projectType,
+        scenario,
+      });
+
+      for (const r of result.results) {
+        await valuationStorage.createResult({
+          projectId: project.id,
+          scenario,
+          method: r.method,
+          enterpriseValue: r.enterpriseValue.toFixed(2),
+          equityValue: r.equityValue.toFixed(2),
+          terminalValue: r.terminalValue?.toFixed(2),
+          netDebt: r.netDebt.toFixed(2),
+          weight: r.weight.toFixed(4),
+          calculationDetails: r.details,
+        });
+      }
+
+      scenarioResults.push({
+        scenario,
+        ev: result.weightedEV,
+        equity: result.weightedEquity,
+      });
+    }
+
+    const weighted = calculateScenarioWeighted(scenarioResults);
+    const wacc = calculateWACC(assumptionData);
+
+    const govImpact = govCriteria.length > 0
+      ? calculateGovernanceImpact(
+          govCriteria.map((g) => ({
+            currentScore: g.currentScore || 0,
+            targetScore: g.targetScore || 10,
+            weight: parseFloat(g.weight || "5"),
+            valuationImpactPct: parseFloat(g.valuationImpactPct || "0"),
+            equityImpactPct: parseFloat(g.equityImpactPct || "0"),
+            roeImpactPct: parseFloat(g.roeImpactPct || "0"),
+          })),
+        )
+      : null;
+
+    await valuationStorage.updateProject(project.id, tenantId, {
+      currentValuation: weighted.weightedEV.toFixed(2),
+      projectedValuation: govImpact
+        ? (weighted.weightedEV * (1 + govImpact.valuationUplift)).toFixed(2)
+        : weighted.weightedEV.toFixed(2),
+      governanceScore: govImpact?.currentScore?.toFixed(2),
+    });
+
+    await valuationStorage.createAiLog({
+      projectId: project.id,
+      eventType: "calculation",
+      triggerSource: "manual",
+      inputSummary: `Calculated ${scenarios.length} scenarios, ${projectType} mode`,
+      outputSummary: `EV: R$ ${(weighted.weightedEV / 1e6).toFixed(2)}M`,
+      fullResponse: { scenarioResults, weighted, wacc, govImpact },
+      confidence: "0.95",
+    });
+
+    res.json({
+      scenarioResults,
+      weighted,
+      wacc,
+      governanceImpact: govImpact,
+      projectType,
+    });
+  } catch (error: any) {
+    console.error("Calculation error:", error);
+    res.status(500).json({ error: "Failed to calculate valuation", details: error.message });
+  }
+});
+
+router.get("/projects/:id/results", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const results = await valuationStorage.getResults(project.id);
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch results" });
+  }
+});
+
+router.post("/projects/:id/sensitivity", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const inputs = await valuationStorage.getInputs(project.id);
+    const assumptions = await valuationStorage.getAssumptions(project.id);
+
+    const projected = inputs.filter((i) => i.isProjection);
+    const historical = inputs.filter((i) => !i.isProjection);
+    const lastHistorical = historical.sort((a, b) => a.year - b.year).pop();
+
+    const fcfs = projected.map((p) => parseFloat(p.freeCashFlow || "0"));
+    const netDebt = lastHistorical ? parseFloat(lastHistorical.debt || "0") - parseFloat(lastHistorical.cash || "0") : 0;
+
+    let baseWacc = 0.12;
+    let baseGrowth = 0.035;
+    for (const a of assumptions) {
+      if (a.key === "terminal_growth") baseGrowth = parseFloat(a.value || "0.035");
+    }
+
+    const assumptionData: AssumptionData = {
+      riskFreeRate: 0.1050,
+      betaUnlevered: 0.8,
+      marketPremium: 0.065,
+      countryRisk: 0.025,
+      sizePremium: 0.035,
+      specificRisk: 0.02,
+      costOfDebt: 0.12,
+      taxRate: 0.34,
+      equityRatio: 0.7,
+      debtRatio: 0.3,
+      terminalGrowth: baseGrowth,
+      projectionYears: 5,
+    };
+
+    for (const a of assumptions) {
+      const val = parseFloat(a.value || "0");
+      if (a.key === "risk_free_rate") assumptionData.riskFreeRate = val;
+      if (a.key === "beta") assumptionData.betaUnlevered = val;
+      if (a.key === "market_premium") assumptionData.marketPremium = val;
+      if (a.key === "country_risk") assumptionData.countryRisk = val;
+      if (a.key === "size_premium") assumptionData.sizePremium = val;
+      if (a.key === "cost_of_debt") assumptionData.costOfDebt = val;
+      if (a.key === "tax_rate") assumptionData.taxRate = val;
+      if (a.key === "equity_ratio") assumptionData.equityRatio = val;
+      if (a.key === "debt_ratio") assumptionData.debtRatio = val;
+    }
+
+    baseWacc = calculateWACC(assumptionData);
+    const gridSize = req.body.gridSize || 5;
+    const matrix = sensitivityAnalysis(fcfs, baseWacc, baseGrowth, netDebt, gridSize);
+    res.json({ matrix, baseWacc, baseGrowth });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to run sensitivity analysis" });
+  }
+});
+
+router.post("/projects/:id/projections", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const inputs = await valuationStorage.getInputs(project.id);
+    const historical: FinancialData[] = inputs
+      .filter((i) => !i.isProjection)
+      .map((i) => ({
+        year: i.year,
+        isProjection: 0,
+        revenue: parseFloat(i.revenue || "0"),
+        ebitda: parseFloat(i.ebitda || "0"),
+        netIncome: parseFloat(i.netIncome || "0"),
+        totalEquity: parseFloat(i.totalEquity || "0"),
+        totalAssets: parseFloat(i.totalAssets || "0"),
+        totalLiabilities: parseFloat(i.totalLiabilities || "0"),
+        cash: parseFloat(i.cash || "0"),
+        debt: parseFloat(i.debt || "0"),
+        capex: parseFloat(i.capex || "0"),
+        depreciation: parseFloat(i.depreciation || "0"),
+        workingCapital: parseFloat(i.workingCapital || "0"),
+        freeCashFlow: parseFloat(i.freeCashFlow || "0"),
+      }));
+
+    const projections = generateProjections(historical, {}, req.body.years || 5);
+
+    for (const p of projections) {
+      await valuationStorage.createInput({
+        projectId: project.id,
+        year: p.year,
+        isProjection: 1,
+        revenue: p.revenue?.toFixed(2),
+        ebitda: p.ebitda?.toFixed(2),
+        ebit: p.ebit?.toFixed(2),
+        netIncome: p.netIncome?.toFixed(2),
+        totalEquity: p.totalEquity?.toFixed(2),
+        totalAssets: p.totalAssets?.toFixed(2),
+        cash: p.cash?.toFixed(2),
+        debt: p.debt?.toFixed(2),
+        capex: p.capex?.toFixed(2),
+        depreciation: p.depreciation?.toFixed(2),
+        freeCashFlow: p.freeCashFlow?.toFixed(2),
+        workingCapital: p.workingCapital?.toFixed(2),
+        growthRate: p.growthRate?.toFixed(4),
+        source: "auto",
+      });
+    }
+
+    res.json(projections);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to generate projections" });
+  }
+});
+
+// ========== GOVERNANCE ==========
+router.get("/projects/:id/governance", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const criteria = await valuationStorage.getGovernanceCriteria(project.id);
+    res.json(criteria);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch governance criteria" });
+  }
+});
+
+router.post("/projects/:id/governance/initialize", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const criteriaData = GOVERNANCE_CRITERIA.map((c) => ({
+      projectId: project.id,
+      criterionCode: c.code,
+      criterionName: c.name,
+      category: c.category,
+      currentScore: 0,
+      targetScore: 10,
+      weight: c.weight.toString(),
+      valuationImpactPct: c.valuationImpactPct.toString(),
+      equityImpactPct: c.equityImpactPct.toString(),
+      roeImpactPct: c.roeImpactPct.toString(),
+    }));
+
+    const result = await valuationStorage.initializeGovernance(project.id, criteriaData);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to initialize governance" });
+  }
+});
+
+router.patch("/projects/:id/governance/:criterionId", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const data = insertValuationGovernanceSchema.partial().parse(req.body);
+    const updated = await valuationStorage.updateGovernanceCriterion(
+      Number(req.params.criterionId),
+      project.id,
+      data,
+    );
+    if (!updated) return res.status(404).json({ error: "Criterion not found" });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    res.status(500).json({ error: "Failed to update governance criterion" });
+  }
+});
+
+router.get("/projects/:id/governance/impact", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const criteria = await valuationStorage.getGovernanceCriteria(project.id);
+    const impact = calculateGovernanceImpact(
+      criteria.map((c) => ({
+        currentScore: c.currentScore || 0,
+        targetScore: c.targetScore || 10,
+        weight: parseFloat(c.weight || "5"),
+        valuationImpactPct: parseFloat(c.valuationImpactPct || "0"),
+        equityImpactPct: parseFloat(c.equityImpactPct || "0"),
+        roeImpactPct: parseFloat(c.roeImpactPct || "0"),
+      })),
+    );
+    res.json(impact);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to calculate governance impact" });
+  }
+});
+
+// ========== PDCA ==========
+router.get("/projects/:id/pdca", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const items = await valuationStorage.getPdcaItems(project.id);
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch PDCA items" });
+  }
+});
+
+router.post("/projects/:id/pdca", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const data = insertValuationPdcaSchema.parse({ ...req.body, projectId: project.id });
+    const item = await valuationStorage.createPdcaItem(data);
+    res.status(201).json(item);
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    res.status(500).json({ error: "Failed to create PDCA item" });
+  }
+});
+
+router.patch("/projects/:id/pdca/:itemId", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const data = insertValuationPdcaSchema.partial().parse(req.body);
+    const updated = await valuationStorage.updatePdcaItem(Number(req.params.itemId), project.id, data);
+    if (!updated) return res.status(404).json({ error: "PDCA item not found" });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    res.status(500).json({ error: "Failed to update PDCA item" });
+  }
+});
+
+router.delete("/projects/:id/pdca/:itemId", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const deleted = await valuationStorage.deletePdcaItem(Number(req.params.itemId), project.id);
+    if (!deleted) return res.status(404).json({ error: "PDCA item not found" });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete PDCA item" });
+  }
+});
+
+// ========== SWOT ==========
+router.get("/projects/:id/swot", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const items = await valuationStorage.getSwotItems(project.id);
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch SWOT items" });
+  }
+});
+
+router.post("/projects/:id/swot", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const data = insertValuationSwotSchema.parse({ ...req.body, projectId: project.id });
+    const item = await valuationStorage.createSwotItem(data);
+    res.status(201).json(item);
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    res.status(500).json({ error: "Failed to create SWOT item" });
+  }
+});
+
+router.patch("/projects/:id/swot/:itemId", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const data = insertValuationSwotSchema.partial().parse(req.body);
+    const updated = await valuationStorage.updateSwotItem(Number(req.params.itemId), project.id, data);
+    if (!updated) return res.status(404).json({ error: "SWOT item not found" });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    res.status(500).json({ error: "Failed to update SWOT item" });
+  }
+});
+
+router.delete("/projects/:id/swot/:itemId", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const deleted = await valuationStorage.deleteSwotItem(Number(req.params.itemId), project.id);
+    if (!deleted) return res.status(404).json({ error: "SWOT item not found" });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete SWOT item" });
+  }
+});
+
+router.post("/projects/:id/swot/generate", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const inputs = await valuationStorage.getInputs(project.id);
+    const govCriteria = await valuationStorage.getGovernanceCriteria(project.id);
+
+    const prompt = `Analise a empresa "${project.companyName}" no setor "${project.sector}" (modelo: ${project.businessModel || "N/A"}, porte: ${project.size}).
+Dados financeiros: ${JSON.stringify(inputs.slice(-3).map((i) => ({ ano: i.year, receita: i.revenue, ebitda: i.ebitda, lucro: i.netIncome })))}
+Governança: ${govCriteria.length} critérios avaliados, score médio: ${govCriteria.length > 0 ? (govCriteria.reduce((s, c) => s + (c.currentScore || 0), 0) / govCriteria.length).toFixed(1) : "N/A"}
+
+Gere uma análise SWOT com exatamente 3 itens por quadrante (Strengths, Weaknesses, Opportunities, Threats).
+Para cada item, indique: item (texto), impact (low/medium/high), valuationRelevance (0-10), governanceRelevance (0-10).
+Responda em JSON: { strengths: [...], weaknesses: [...], opportunities: [...], threats: [...] }`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+    });
+
+    const swotData = JSON.parse(completion.choices[0].message.content || "{}");
+    const created = [];
+
+    for (const quadrant of ["strengths", "weaknesses", "opportunities", "threats"]) {
+      const items = swotData[quadrant] || [];
+      for (let i = 0; i < items.length; i++) {
+        const item = await valuationStorage.createSwotItem({
+          projectId: project.id,
+          quadrant,
+          item: items[i].item,
+          impact: items[i].impact || "medium",
+          valuationRelevance: items[i].valuationRelevance || 5,
+          governanceRelevance: items[i].governanceRelevance || 5,
+          orderIndex: i,
+        });
+        created.push(item);
+      }
+    }
+
+    await valuationStorage.createAiLog({
+      projectId: project.id,
+      eventType: "swot_generation",
+      triggerSource: "manual",
+      inputSummary: `Generated SWOT for ${project.companyName}`,
+      outputSummary: `${created.length} items created`,
+      fullResponse: swotData,
+      confidence: "0.85",
+      tokensUsed: completion.usage?.total_tokens,
+    });
+
+    res.json(created);
+  } catch (error: any) {
+    console.error("SWOT generation error:", error);
+    res.status(500).json({ error: "Failed to generate SWOT" });
+  }
+});
+
+// ========== ASSETS ==========
+router.get("/projects/:id/assets", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const assets = await valuationStorage.getAssets(project.id);
+    res.json(assets);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch assets" });
+  }
+});
+
+router.post("/projects/:id/assets", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const data = insertValuationAssetSchema.parse({ ...req.body, projectId: project.id });
+    const asset = await valuationStorage.createAsset(data);
+    res.status(201).json(asset);
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    res.status(500).json({ error: "Failed to create asset" });
+  }
+});
+
+router.patch("/projects/:id/assets/:assetId", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const data = insertValuationAssetSchema.partial().parse(req.body);
+    const updated = await valuationStorage.updateAsset(Number(req.params.assetId), project.id, data);
+    if (!updated) return res.status(404).json({ error: "Asset not found" });
+    res.json(updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+    res.status(500).json({ error: "Failed to update asset" });
+  }
+});
+
+router.delete("/projects/:id/assets/:assetId", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const deleted = await valuationStorage.deleteAsset(Number(req.params.assetId), project.id);
+    if (!deleted) return res.status(404).json({ error: "Asset not found" });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to delete asset" });
+  }
+});
+
+// ========== AI LOG / FEED ==========
+router.get("/projects/:id/ai-feed", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const logs = await valuationStorage.getAiLogs(project.id, 20);
+    res.json(logs);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch AI feed" });
+  }
+});
+
+router.post("/projects/:id/ai-chat", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: "Message required" });
+
+    const inputs = await valuationStorage.getInputs(project.id);
+    const govCriteria = await valuationStorage.getGovernanceCriteria(project.id);
+    const results = await valuationStorage.getResults(project.id);
+    const swot = await valuationStorage.getSwotItems(project.id);
+
+    const systemPrompt = `Você é um consultor especialista em Valuation e M&A da Arcádia Suite.
+Empresa: ${project.companyName} | Setor: ${project.sector} | Porte: ${project.size}
+Status: ${project.status} | Tipo: ${project.projectType || "simple"}
+Valuation Atual: R$ ${project.currentValuation || "N/A"} | Projetado: R$ ${project.projectedValuation || "N/A"}
+Dados financeiros (últimos anos): ${JSON.stringify(inputs.slice(-5).map((i) => ({ ano: i.year, receita: i.revenue, ebitda: i.ebitda, lucro: i.netIncome, fcf: i.freeCashFlow })))}
+Governança: ${govCriteria.length} critérios, score médio ${govCriteria.length > 0 ? (govCriteria.reduce((s, c) => s + (c.currentScore || 0), 0) / govCriteria.length).toFixed(1) : "N/A"}
+Resultados: ${results.length > 0 ? results.map((r) => `${r.method}/${r.scenario}: EV=${r.enterpriseValue}`).join("; ") : "Nenhum cálculo realizado"}
+SWOT: ${swot.length} itens
+Responda de forma consultiva, em português, com foco em recomendações acionáveis.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message },
+      ],
+    });
+
+    const reply = completion.choices[0].message.content || "";
+
+    await valuationStorage.createAiLog({
+      projectId: project.id,
+      eventType: "chat",
+      triggerSource: "user",
+      inputSummary: message.substring(0, 200),
+      outputSummary: reply.substring(0, 200),
+      fullResponse: { message, reply },
+      tokensUsed: completion.usage?.total_tokens,
+    });
+
+    res.json({ reply });
+  } catch (error: any) {
+    console.error("AI chat error:", error);
+    res.status(500).json({ error: "Failed to process chat" });
+  }
+});
+
+// ========== REPORTS ==========
+router.get("/projects/:id/reports", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+    const reports = await valuationStorage.getReports(project.id);
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch reports" });
+  }
+});
+
+router.post("/projects/:id/reports/generate", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const { reportType = "executive", format = "html" } = req.body;
+
+    const inputs = await valuationStorage.getInputs(project.id);
+    const results = await valuationStorage.getResults(project.id);
+    const govCriteria = await valuationStorage.getGovernanceCriteria(project.id);
+    const swot = await valuationStorage.getSwotItems(project.id);
+    const pdca = await valuationStorage.getPdcaItems(project.id);
+    const assets = await valuationStorage.getAssets(project.id);
+
+    const govImpact = govCriteria.length > 0
+      ? calculateGovernanceImpact(
+          govCriteria.map((c) => ({
+            currentScore: c.currentScore || 0,
+            targetScore: c.targetScore || 10,
+            weight: parseFloat(c.weight || "5"),
+            valuationImpactPct: parseFloat(c.valuationImpactPct || "0"),
+            equityImpactPct: parseFloat(c.equityImpactPct || "0"),
+            roeImpactPct: parseFloat(c.roeImpactPct || "0"),
+          })),
+        )
+      : null;
+
+    const prompt = `Gere um relatório ${reportType === "executive" ? "executivo" : "técnico"} de valuation para:
+Empresa: ${project.companyName} | Setor: ${project.sector} | Porte: ${project.size}
+Valuation: R$ ${project.currentValuation || "N/A"} (atual) → R$ ${project.projectedValuation || "N/A"} (projetado)
+Dados financeiros: ${JSON.stringify(inputs.slice(-5).map((i) => ({ ano: i.year, receita: i.revenue, ebitda: i.ebitda })))}
+Resultados por método: ${results.map((r) => `${r.method} (${r.scenario}): EV R$ ${r.enterpriseValue}`).join("; ")}
+Governança: Score ${govImpact?.currentScore?.toFixed(1) || "N/A"}/10, uplift potencial ${((govImpact?.valuationUplift || 0) * 100).toFixed(1)}%
+SWOT: ${swot.length} itens | PDCA: ${pdca.length} ações | Ativos: ${assets.length}
+Gere em formato HTML com seções claras. Use formatação profissional.`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const content = completion.choices[0].message.content || "";
+
+    const report = await valuationStorage.createReport({
+      projectId: project.id,
+      reportType,
+      format,
+      fileUrl: null,
+      generatedBy: req.user?.id,
+    });
+
+    await valuationStorage.createAiLog({
+      projectId: project.id,
+      eventType: "report_generation",
+      triggerSource: "manual",
+      inputSummary: `Generated ${reportType} report in ${format}`,
+      outputSummary: `Report #${report.id} created`,
+      fullResponse: { reportId: report.id, content },
+      tokensUsed: completion.usage?.total_tokens,
+    });
+
+    res.json({ report, content });
+  } catch (error: any) {
+    console.error("Report generation error:", error);
+    res.status(500).json({ error: "Failed to generate report" });
+  }
+});
+
+// ========== PROJECT SUMMARY ==========
+router.get("/projects/:id/summary", requireAuth, async (req, res) => {
+  try {
+    const tenantId = await getUserTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant not found" });
+    const project = await valuationStorage.getProject(Number(req.params.id), tenantId);
+    if (!project) return res.status(404).json({ error: "Project not found" });
+
+    const [inputs, results, govCriteria, swot, pdca, assets, checklistProgress, aiLogs] =
+      await Promise.all([
+        valuationStorage.getInputs(project.id),
+        valuationStorage.getResults(project.id),
+        valuationStorage.getGovernanceCriteria(project.id),
+        valuationStorage.getSwotItems(project.id),
+        valuationStorage.getPdcaItems(project.id),
+        valuationStorage.getAssets(project.id),
+        valuationStorage.getChecklistProgress(project.id),
+        valuationStorage.getAiLogs(project.id, 5),
+      ]);
+
+    const checklistTotal = checklistProgress.length;
+    const checklistCompleted = checklistProgress.filter((p) => p.status === "uploaded" || p.status === "completed").length;
+
+    const govImpact = govCriteria.length > 0
+      ? calculateGovernanceImpact(
+          govCriteria.map((c) => ({
+            currentScore: c.currentScore || 0,
+            targetScore: c.targetScore || 10,
+            weight: parseFloat(c.weight || "5"),
+            valuationImpactPct: parseFloat(c.valuationImpactPct || "0"),
+            equityImpactPct: parseFloat(c.equityImpactPct || "0"),
+            roeImpactPct: parseFloat(c.roeImpactPct || "0"),
+          })),
+        )
+      : null;
+
+    const baseResults = results.filter((r) => r.scenario === "base");
+    const pdcaCompleted = pdca.filter((p) => p.status === "completed").length;
+
+    res.json({
+      project,
+      financials: {
+        historicalYears: inputs.filter((i) => !i.isProjection).length,
+        projectedYears: inputs.filter((i) => i.isProjection).length,
+        latestRevenue: inputs.filter((i) => !i.isProjection).sort((a, b) => b.year - a.year)[0]?.revenue,
+        latestEbitda: inputs.filter((i) => !i.isProjection).sort((a, b) => b.year - a.year)[0]?.ebitda,
+      },
+      valuation: {
+        currentEV: project.currentValuation,
+        projectedEV: project.projectedValuation,
+        creationOfValue: project.currentValuation && project.projectedValuation
+          ? (parseFloat(project.projectedValuation) - parseFloat(project.currentValuation)).toFixed(2)
+          : null,
+        creationPct: project.currentValuation && project.projectedValuation && parseFloat(project.currentValuation) > 0
+          ? (((parseFloat(project.projectedValuation) - parseFloat(project.currentValuation)) / parseFloat(project.currentValuation)) * 100).toFixed(1)
+          : null,
+        resultsByMethod: baseResults.map((r) => ({ method: r.method, ev: r.enterpriseValue, equity: r.equityValue })),
+      },
+      governance: govImpact
+        ? {
+            currentScore: govImpact.currentScore.toFixed(1),
+            projectedScore: govImpact.projectedScore.toFixed(1),
+            uplift: (govImpact.valuationUplift * 100).toFixed(1),
+            waccReduction: (govImpact.waccReduction * 100).toFixed(2),
+            criteriaCount: govCriteria.length,
+          }
+        : null,
+      checklist: {
+        total: checklistTotal,
+        completed: checklistCompleted,
+        progress: checklistTotal > 0 ? Math.round((checklistCompleted / checklistTotal) * 100) : 0,
+      },
+      swot: {
+        total: swot.length,
+        byQuadrant: {
+          strengths: swot.filter((s) => s.quadrant === "strengths").length,
+          weaknesses: swot.filter((s) => s.quadrant === "weaknesses").length,
+          opportunities: swot.filter((s) => s.quadrant === "opportunities").length,
+          threats: swot.filter((s) => s.quadrant === "threats").length,
+        },
+      },
+      pdca: {
+        total: pdca.length,
+        completed: pdcaCompleted,
+        byPhase: {
+          plan: pdca.filter((p) => p.phase === "plan").length,
+          do: pdca.filter((p) => p.phase === "do").length,
+          check: pdca.filter((p) => p.phase === "check").length,
+          act: pdca.filter((p) => p.phase === "act").length,
+        },
+      },
+      assets: {
+        total: assets.length,
+        totalBookValue: assets.reduce((s, a) => s + parseFloat(a.bookValue || "0"), 0).toFixed(2),
+        totalMarketValue: assets.reduce((s, a) => s + parseFloat(a.marketValue || "0"), 0).toFixed(2),
+      },
+      recentAiActions: aiLogs.map((l) => ({
+        type: l.eventType,
+        summary: l.outputSummary,
+        timestamp: l.createdAt,
+      })),
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch project summary" });
   }
 });
 

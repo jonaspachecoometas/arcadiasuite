@@ -2488,6 +2488,7 @@ export const valuationProjects = pgTable("valuation_projects", {
   businessModel: text("business_model"),
   stage: text("stage").notNull(),
   size: text("size").notNull(),
+  projectType: text("project_type").default("simple"),
   status: text("status").default("draft"),
   consultantId: varchar("consultant_id").references(() => users.id),
   clientUserId: varchar("client_user_id").references(() => users.id),
@@ -2495,9 +2496,20 @@ export const valuationProjects = pgTable("valuation_projects", {
   valuationRangeMin: numeric("valuation_range_min"),
   valuationRangeMax: numeric("valuation_range_max"),
   finalValue: numeric("final_value"),
+  currentValuation: numeric("current_valuation"),
+  projectedValuation: numeric("projected_valuation"),
+  governanceScore: numeric("governance_score"),
+  checklistProgress: numeric("checklist_progress"),
   currency: text("currency").default("BRL"),
+  baseDate: timestamp("base_date"),
+  valuationObjective: text("valuation_objective"),
+  foundingYear: integer("founding_year"),
+  city: text("city"),
+  state: text("state"),
+  legalNature: text("legal_nature"),
   reportUrl: text("report_url"),
   notes: text("notes"),
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
@@ -2508,8 +2520,12 @@ export const valuationInputs = pgTable("valuation_inputs", {
   projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
   year: integer("year").notNull(),
   isProjection: integer("is_projection").default(0),
+  periodType: text("period_type").default("annual"),
+  grossRevenue: numeric("gross_revenue"),
   revenue: numeric("revenue"),
+  cogs: numeric("cogs"),
   grossProfit: numeric("gross_profit"),
+  operatingExpenses: numeric("operating_expenses"),
   ebitda: numeric("ebitda"),
   ebit: numeric("ebit"),
   netIncome: numeric("net_income"),
@@ -2521,7 +2537,10 @@ export const valuationInputs = pgTable("valuation_inputs", {
   workingCapital: numeric("working_capital"),
   capex: numeric("capex"),
   depreciation: numeric("depreciation"),
+  cashFlowOperations: numeric("cash_flow_operations"),
   freeCashFlow: numeric("free_cash_flow"),
+  headcount: integer("headcount"),
+  source: text("source").default("manual"),
   arr: numeric("arr"),
   mrr: numeric("mrr"),
   churnRate: numeric("churn_rate"),
@@ -2664,7 +2683,151 @@ export const valuationAgentInsights = pgTable("valuation_agent_insights", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
-// Insert Schemas - Valuation
+// ========== VALUATION GOVERNANCE ==========
+export const valuationGovernance = pgTable("valuation_governance", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
+  criterionCode: text("criterion_code").notNull(),
+  criterionName: text("criterion_name").notNull(),
+  category: text("category").notNull(),
+  currentScore: integer("current_score").default(0),
+  targetScore: integer("target_score").default(10),
+  weight: numeric("weight"),
+  valuationImpactPct: numeric("valuation_impact_pct"),
+  equityImpactPct: numeric("equity_impact_pct"),
+  roeImpactPct: numeric("roe_impact_pct"),
+  priority: text("priority").default("medium"),
+  implementationQuarter: text("implementation_quarter"),
+  implementationCost: numeric("implementation_cost"),
+  status: text("status").default("not_started"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// ========== VALUATION PDCA ==========
+export const valuationPdca = pgTable("valuation_pdca", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
+  governanceCriterionId: integer("governance_criterion_id").references(() => valuationGovernance.id),
+  title: text("title").notNull(),
+  originArea: text("origin_area").notNull(),
+  phase: text("phase").notNull().default("plan"),
+  status: text("status").default("not_started"),
+  priority: text("priority").default("medium"),
+  description: text("description"),
+  expectedResult: text("expected_result"),
+  actualResult: text("actual_result"),
+  improvementScore: integer("improvement_score"),
+  heatMapValue: numeric("heat_map_value"),
+  responsible: text("responsible"),
+  startDate: timestamp("start_date"),
+  endDate: timestamp("end_date"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// ========== VALUATION SWOT ==========
+export const valuationSwot = pgTable("valuation_swot", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
+  quadrant: text("quadrant").notNull(),
+  item: text("item").notNull(),
+  impact: text("impact").default("medium"),
+  valuationRelevance: integer("valuation_relevance").default(0),
+  governanceRelevance: integer("governance_relevance").default(0),
+  linkedPdcaId: integer("linked_pdca_id").references(() => valuationPdca.id),
+  valuationImpactPct: numeric("valuation_impact_pct"),
+  orderIndex: integer("order_index").default(0),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// ========== VALUATION RESULTS ==========
+export const valuationResults = pgTable("valuation_results", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
+  scenario: text("scenario").notNull(),
+  method: text("method").notNull(),
+  enterpriseValue: numeric("enterprise_value"),
+  equityValue: numeric("equity_value"),
+  terminalValue: numeric("terminal_value"),
+  netDebt: numeric("net_debt"),
+  roe: numeric("roe"),
+  roa: numeric("roa"),
+  weight: numeric("weight"),
+  calculationDetails: jsonb("calculation_details"),
+  calculatedAt: timestamp("calculated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// ========== VALUATION ASSETS ==========
+export const valuationAssets = pgTable("valuation_assets", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
+  assetType: text("asset_type").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  bookValue: numeric("book_value"),
+  marketValue: numeric("market_value"),
+  appraisedValue: numeric("appraised_value"),
+  depreciationRate: numeric("depreciation_rate"),
+  acquisitionDate: timestamp("acquisition_date"),
+  status: text("status").default("active"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// ========== VALUATION REPORTS ==========
+export const valuationReports = pgTable("valuation_reports", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
+  reportType: text("report_type").notNull(),
+  format: text("format").notNull(),
+  fileUrl: text("file_url"),
+  generatedAt: timestamp("generated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  generatedBy: varchar("generated_by").references(() => users.id),
+  version: integer("version").default(1),
+  isCurrent: integer("is_current").default(1),
+});
+
+// ========== VALUATION AI LOG ==========
+export const valuationAiLog = pgTable("valuation_ai_log", {
+  id: serial("id").primaryKey(),
+  projectId: integer("project_id").notNull().references(() => valuationProjects.id, { onDelete: "cascade" }),
+  eventType: text("event_type").notNull(),
+  triggerSource: text("trigger_source").notNull(),
+  inputSummary: text("input_summary"),
+  outputSummary: text("output_summary"),
+  fullResponse: jsonb("full_response"),
+  confidence: numeric("confidence"),
+  tokensUsed: integer("tokens_used"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// Insert Schemas - Valuation (new tables)
+export const insertValuationGovernanceSchema = createInsertSchema(valuationGovernance).omit({ id: true, createdAt: true });
+export const insertValuationPdcaSchema = createInsertSchema(valuationPdca).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertValuationSwotSchema = createInsertSchema(valuationSwot).omit({ id: true, createdAt: true });
+export const insertValuationResultSchema = createInsertSchema(valuationResults).omit({ id: true, calculatedAt: true });
+export const insertValuationAssetSchema = createInsertSchema(valuationAssets).omit({ id: true, createdAt: true });
+export const insertValuationReportSchema = createInsertSchema(valuationReports).omit({ id: true, generatedAt: true });
+export const insertValuationAiLogSchema = createInsertSchema(valuationAiLog).omit({ id: true, createdAt: true });
+
+// Types - Valuation (new tables)
+export type ValuationGovernanceEntry = typeof valuationGovernance.$inferSelect;
+export type InsertValuationGovernance = z.infer<typeof insertValuationGovernanceSchema>;
+export type ValuationPdcaEntry = typeof valuationPdca.$inferSelect;
+export type InsertValuationPdca = z.infer<typeof insertValuationPdcaSchema>;
+export type ValuationSwotEntry = typeof valuationSwot.$inferSelect;
+export type InsertValuationSwot = z.infer<typeof insertValuationSwotSchema>;
+export type ValuationResultEntry = typeof valuationResults.$inferSelect;
+export type InsertValuationResult = z.infer<typeof insertValuationResultSchema>;
+export type ValuationAssetEntry = typeof valuationAssets.$inferSelect;
+export type InsertValuationAsset = z.infer<typeof insertValuationAssetSchema>;
+export type ValuationReportEntry = typeof valuationReports.$inferSelect;
+export type InsertValuationReport = z.infer<typeof insertValuationReportSchema>;
+export type ValuationAiLogEntry = typeof valuationAiLog.$inferSelect;
+export type InsertValuationAiLog = z.infer<typeof insertValuationAiLogSchema>;
+
+// Insert Schemas - Valuation (original tables)
 export const insertValuationProjectSchema = createInsertSchema(valuationProjects).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertValuationInputSchema = createInsertSchema(valuationInputs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertValuationAssumptionSchema = createInsertSchema(valuationAssumptions).omit({ id: true, createdAt: true });
