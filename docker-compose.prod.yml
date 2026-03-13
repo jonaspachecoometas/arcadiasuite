@@ -1,0 +1,212 @@
+# ─── Arcádia Suite — Produção (Coolify) ───────────────────────────────────────
+# Este arquivo é usado pelo Coolify para deploy automático.
+# NÃO inclui volumes de código-fonte — só artefatos de build.
+# Configurar no Coolify: Environment Variables para todas as vars ${...}
+
+name: arcadia-prod
+
+services:
+
+  # ── Banco de dados com pgvector ─────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    restart: always
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-arcadia}
+      POSTGRES_USER: ${PGUSER:-arcadia}
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/01-pgvector.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-arcadia}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - arcadia-internal
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - arcadia-internal
+
+  # ── App principal ─────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+      REDIS_URL: redis://redis:6379
+      DOCKER_MODE: "true"
+      CONTABIL_PYTHON_URL: http://contabil:8003
+      BI_PYTHON_URL: http://bi:8004
+      AUTOMATION_PYTHON_URL: http://automation:8005
+      FISCO_PYTHON_URL: http://fisco:8002
+      PYTHON_SERVICE_URL: http://embeddings:8001
+      SESSION_SECRET: ${SESSION_SECRET}
+      SSO_SECRET: ${SSO_SECRET}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+    ports:
+      - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - arcadia-internal
+      - arcadia-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.arcadia.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.arcadia.tls=true"
+      - "traefik.http.routers.arcadia.tls.certresolver=letsencrypt"
+
+  # ── Microserviços Python ─────────────────────────────────────────────────────
+  contabil:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: always
+    environment:
+      SERVICE_NAME: contabil
+      SERVICE_PORT: 8003
+      CONTABIL_PORT: 8003
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - arcadia-internal
+
+  bi:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: always
+    environment:
+      SERVICE_NAME: bi
+      SERVICE_PORT: 8004
+      BI_PORT: 8004
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - arcadia-internal
+
+  automation:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: always
+    environment:
+      SERVICE_NAME: automation
+      SERVICE_PORT: 8005
+      AUTOMATION_PORT: 8005
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - arcadia-internal
+
+  fisco:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: always
+    environment:
+      SERVICE_NAME: fisco
+      SERVICE_PORT: 8002
+      FISCO_PORT: 8002
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - arcadia-internal
+
+  embeddings:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: always
+    environment:
+      SERVICE_NAME: embeddings
+      SERVICE_PORT: 8001
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - arcadia-internal
+
+  # ── LiteLLM (proxy de LLM) ───────────────────────────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: always
+    volumes:
+      - ./docker/litellm-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LITELLM_MASTER_KEY: ${LITELLM_API_KEY}
+    networks:
+      - arcadia-internal
+
+  # ── Ollama (LLMs locais — ativar se o servidor tiver RAM suficiente) ──────────
+  ollama:
+    image: ollama/ollama:latest
+    restart: always
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - arcadia-internal
+    profiles: [ai]
+
+  # ── Open WebUI ───────────────────────────────────────────────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    restart: always
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+    networks:
+      - arcadia-internal
+      - arcadia-public
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.webui.rule=Host(`ai.${DOMAIN}`)"
+      - "traefik.http.routers.webui.tls=true"
+      - "traefik.http.routers.webui.tls.certresolver=letsencrypt"
+      - "traefik.http.services.webui.loadbalancer.server.port=8080"
+    profiles: [ai]
+
+networks:
+  arcadia-internal:
+    driver: bridge
+  arcadia-public:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redis_data:
+  ollama_models:
+  open_webui_data:

@@ -201,10 +201,15 @@ function startNodeService(name: string, scriptPath: string, port: number) {
 
 export { managedServices, restartManagedService, stopManagedService, getManagedServiceInfo, getManagedServiceLogs, startNodeService };
 
-startPythonService("contabil", path.join(process.cwd(), "server/python/contabil_service.py"), 8003);
-startPythonService("bi", path.join(process.cwd(), "server/python/bi_engine.py"), 8004);
-startPythonService("automation", path.join(process.cwd(), "server/python/automation_engine.py"), 8005);
-startNodeService("communication", path.join(process.cwd(), "server/communication/engine.ts"), 8006);
+// Em modo Docker cada serviço roda como container independente — não spawnar processos filhos
+if (!process.env.DOCKER_MODE || process.env.DOCKER_MODE === "false") {
+  startPythonService("contabil", path.join(process.cwd(), "server/python/contabil_service.py"), 8003);
+  startPythonService("bi", path.join(process.cwd(), "server/python/bi_engine.py"), 8004);
+  startPythonService("automation", path.join(process.cwd(), "server/python/automation_engine.py"), 8005);
+  startNodeService("communication", path.join(process.cwd(), "server/communication/engine.ts"), 8006);
+} else {
+  console.log("[services] DOCKER_MODE=true — microserviços rodando como containers independentes");
+}
 
 function startShellService(name: string, scriptPath: string, port: number) {
   const existing = managedServices.get(name);
