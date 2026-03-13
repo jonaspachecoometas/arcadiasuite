@@ -58,6 +58,11 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: ${LITELLM_API_KEY}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      # ── Manus Agent — aponta para LiteLLM como gateway unificado ──────────
+      # LiteLLM roteia para Ollama (local), LLMFit (fine-tuned) ou externo
+      AI_INTEGRATIONS_OPENAI_BASE_URL: http://litellm:4000/v1
+      AI_INTEGRATIONS_OPENAI_API_KEY: ${LITELLM_API_KEY}
     ports:
       - "5000:5000"
     depends_on:
@@ -154,7 +159,8 @@ services:
     networks:
       - arcadia-internal
 
-  # ── LiteLLM (proxy de LLM) ───────────────────────────────────────────────────
+  # ── LiteLLM (gateway unificado de LLM — soberania dos dados) ─────────────────
+  # Roteia: LLMFit (fine-tuned) → Ollama (local) → externo (opt-in)
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     restart: always
@@ -164,10 +170,25 @@ services:
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LITELLM_MASTER_KEY: ${LITELLM_API_KEY}
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+      # Ollama: se instalado no host use http://host-gateway:11434
+      # Se usar container Docker, mantém http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      # LLMFit: URL do serviço de modelos fine-tuned
+      LLMFIT_BASE_URL: ${LLMFIT_BASE_URL:-}
+      # Providers externos opcionais (soberania: só habilitados se configurados)
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - arcadia-internal
 
-  # ── Ollama (LLMs locais — ativar se o servidor tiver RAM suficiente) ──────────
+  # ── Ollama (LLMs locais — soberania total) ────────────────────────────────────
+  # OPÇÃO A (padrão): Ollama como container Docker
+  # OPÇÃO B: Ollama no host → comente este serviço e defina
+  #          OLLAMA_BASE_URL=http://host-gateway:11434 nas env vars
   ollama:
     image: ollama/ollama:latest
     restart: always
@@ -175,19 +196,23 @@ services:
       - ollama_models:/root/.ollama
     networks:
       - arcadia-internal
+    # Remova 'profiles: [ai]' para ativar por padrão no deploy
     profiles: [ai]
 
-  # ── Open WebUI ───────────────────────────────────────────────────────────────
+  # ── Open WebUI (interface para Ollama + LLMFit) ───────────────────────────────
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     restart: always
     environment:
-      OLLAMA_BASE_URL: http://ollama:11434
+      # Pode apontar para LiteLLM para ter acesso a todos os modelos via WebUI
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_API_KEY}
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
     volumes:
       - open_webui_data:/app/backend/data
     depends_on:
-      - ollama
+      - litellm
     networks:
       - arcadia-internal
       - arcadia-public

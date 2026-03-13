@@ -1,20 +1,34 @@
-# LiteLLM — Proxy unificado de LLMs para o Arcádia Suite
+# LiteLLM — Gateway unificado de LLMs para o Arcádia Suite
 # Documentação: https://docs.litellm.ai/docs/proxy/configs
+#
+# ESTRATÉGIA DE SOBERANIA DOS DADOS:
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │  TIER 1 (soberania total): LLMFit — modelos fine-tuned locais           │
+# │  TIER 2 (soberania total): Ollama — modelos open source no servidor     │
+# │  TIER 3 (opt-in): Providers externos — só com configuração explícita    │
+# └─────────────────────────────────────────────────────────────────────────┘
+# O Manus, Autonomous Agents e todos os serviços chamam APENAS este proxy.
+# Nunca chamam APIs externas diretamente.
 
 model_list:
 
-  # ── OpenAI (quando disponível) ───────────────────────────────────────────────
-  - model_name: gpt-4o
-    litellm_params:
-      model: openai/gpt-4o
-      api_key: os.environ/OPENAI_API_KEY
+  # ── TIER 1: LLMFit (modelos fine-tuned locais — máxima soberania) ────────────
+  # Descomente quando o LLMFit estiver rodando no servidor
+  # O LLMFit expõe API compatível com OpenAI — basta apontar a URL
+  #
+  # - model_name: arcadia-finetuned
+  #   litellm_params:
+  #     model: openai/arcadia-v1          # nome do modelo no LLMFit
+  #     api_base: os.environ/LLMFIT_BASE_URL
+  #     api_key: llmfit-internal
+  #
+  # - model_name: arcadia-embed
+  #   litellm_params:
+  #     model: openai/arcadia-embed-v1    # modelo de embeddings fine-tuned
+  #     api_base: os.environ/LLMFIT_BASE_URL
+  #     api_key: llmfit-internal
 
-  - model_name: gpt-4o-mini
-    litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENAI_API_KEY
-
-  # ── Ollama (LLMs locais — soberania) ─────────────────────────────────────────
+  # ── TIER 2: Ollama (LLMs locais — soberania total) ───────────────────────────
   - model_name: llama3.3
     litellm_params:
       model: ollama/llama3.3
@@ -30,26 +44,61 @@ model_list:
       model: ollama/deepseek-r1:7b
       api_base: os.environ/OLLAMA_BASE_URL
 
-  # ── Modelo padrão: tenta OpenAI, fallback para Ollama ───────────────────────
-  - model_name: arcadia-default
+  - model_name: nomic-embed-text
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: os.environ/OLLAMA_BASE_URL
+
+  # ── TIER 3: OpenAI (opt-in — só ativo se OPENAI_API_KEY configurado) ─────────
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: gpt-4o-mini
     litellm_params:
       model: openai/gpt-4o-mini
       api_key: os.environ/OPENAI_API_KEY
+
+  # ── TIER 3: Anthropic (opt-in — descomente para habilitar) ───────────────────
+  # - model_name: claude-sonnet
+  #   litellm_params:
+  #     model: anthropic/claude-sonnet-4-6
+  #     api_key: os.environ/ANTHROPIC_API_KEY
+
+  # ── TIER 3: Groq (opt-in — inferência rápida sem dados persistidos) ──────────
+  # - model_name: groq-llama
+  #   litellm_params:
+  #     model: groq/llama-3.3-70b-versatile
+  #     api_key: os.environ/GROQ_API_KEY
+
+  # ── Modelo padrão do Arcádia (Manus usa este) ─────────────────────────────────
+  # Prioridade: LLMFit → OpenAI (se configurado) → Ollama (sempre disponível)
+  # Para soberania total: remova o fallback para gpt-4o-mini
+  - model_name: arcadia-default
+    litellm_params:
+      model: ollama/llama3.3
+      api_base: os.environ/OLLAMA_BASE_URL
     model_info:
-      fallbacks: ["llama3.3"]
+      # fallbacks: ["gpt-4o-mini"]    # descomente para habilitar fallback externo
 
 router_settings:
   routing_strategy: least-busy
   fallbacks:
     - {"gpt-4o": ["llama3.3"]}
-    - {"gpt-4o-mini": ["qwen2.5-coder"]}
+    - {"gpt-4o-mini": ["llama3.3"]}
     - {"arcadia-default": ["llama3.3"]}
 
 litellm_settings:
   drop_params: true
   request_timeout: 120
   set_verbose: false
+  # Loga todas as chamadas no banco — essencial para auditoria e soberania
+  success_callback: ["langfuse"]
+  failure_callback: ["langfuse"]
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   database_url: os.environ/DATABASE_URL
+  # Habilita interface de gestão do LiteLLM (opcional)
+  # ui_access_mode: "all"
