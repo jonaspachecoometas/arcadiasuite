@@ -1,11 +1,13 @@
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Lock,
   Search,
   ShoppingCart,
   GraduationCap,
@@ -53,6 +55,7 @@ interface AppItem {
   status: "active" | "coming_soon" | "beta";
   featured?: boolean;
   color: string;
+  subscriptionCode?: string; // marketplace module code — if set, requires active subscription
 }
 
 const apps: AppItem[] = [
@@ -500,6 +503,24 @@ export default function AppCenter() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeCategory, setActiveCategory] = useState("todos");
 
+  const { data: myAppsData } = useQuery<{ subscribedCodes: string[] }>({
+    queryKey: ["/api/marketplace/my-apps"],
+    staleTime: 60_000,
+  });
+
+  const subscribedCodes = new Set(myAppsData?.subscribedCodes || []);
+
+  const isLocked = (app: AppItem) =>
+    !!app.subscriptionCode && subscribedCodes.size > 0 && !subscribedCodes.has(app.subscriptionCode);
+
+  const handleAppClick = (app: AppItem) => {
+    if (isLocked(app)) {
+      setLocation("/marketplace");
+    } else {
+      setLocation(app.route);
+    }
+  };
+
   const filteredApps = apps.filter(app => {
     const matchesSearch = app.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       app.description.toLowerCase().includes(searchTerm.toLowerCase());
@@ -546,7 +567,7 @@ export default function AppCenter() {
                   <Card
                     key={app.id}
                     className="bg-white/5 border-white/10 hover:border-white/30 cursor-pointer transition-all hover:scale-105 group"
-                    onClick={() => setLocation(app.route)}
+                    onClick={() => handleAppClick(app)}
                     data-testid={`featured-app-${app.id}`}
                   >
                     <CardContent className="p-4 text-center">
@@ -579,27 +600,37 @@ export default function AppCenter() {
 
             <TabsContent value={activeCategory} className="mt-0">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {filteredApps.map(app => (
+                {filteredApps.map(app => {
+                  const locked = isLocked(app);
+                  return (
                   <Card
                     key={app.id}
-                    className="bg-white/5 border-white/10 hover:border-white/30 cursor-pointer transition-all group overflow-hidden"
-                    onClick={() => setLocation(app.route)}
+                    className={`border-white/10 cursor-pointer transition-all group overflow-hidden ${locked ? "bg-white/2 opacity-60 hover:opacity-80" : "bg-white/5 hover:border-white/30"}`}
+                    onClick={() => handleAppClick(app)}
                     data-testid={`app-card-${app.id}`}
                   >
                     <CardContent className="p-5">
                       <div className="flex items-start gap-4">
-                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${app.color} flex items-center justify-center text-white flex-shrink-0 group-hover:scale-110 transition-transform`}>
+                        <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${app.color} flex items-center justify-center text-white flex-shrink-0 ${locked ? "" : "group-hover:scale-110"} transition-transform relative`}>
                           {app.icon}
+                          {locked && (
+                            <div className="absolute inset-0 rounded-2xl bg-black/50 flex items-center justify-center">
+                              <Lock className="w-5 h-5 text-white" />
+                            </div>
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-semibold text-white group-hover:text-indigo-400 transition-colors truncate">
+                            <h3 className={`font-semibold truncate ${locked ? "text-slate-400" : "text-white group-hover:text-indigo-400"} transition-colors`}>
                               {app.name}
                             </h3>
-                            {app.status === "beta" && (
+                            {locked && (
+                              <Badge className="bg-slate-600/50 text-slate-400 text-xs">Não contratado</Badge>
+                            )}
+                            {!locked && app.status === "beta" && (
                               <Badge className="bg-yellow-500/20 text-yellow-300 text-xs">Beta</Badge>
                             )}
-                            {app.status === "coming_soon" && (
+                            {!locked && app.status === "coming_soon" && (
                               <Badge className="bg-slate-500/20 text-slate-300 text-xs">Em breve</Badge>
                             )}
                           </div>
@@ -607,13 +638,20 @@ export default function AppCenter() {
                         </div>
                       </div>
                       <div className="mt-4 flex justify-end">
-                        <span className="text-xs text-indigo-400 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          Abrir <ArrowRight className="w-3 h-3" />
-                        </span>
+                        {locked ? (
+                          <span className="text-xs text-slate-500 flex items-center gap-1">
+                            Ver no Marketplace <ArrowRight className="w-3 h-3" />
+                          </span>
+                        ) : (
+                          <span className="text-xs text-indigo-400 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            Abrir <ArrowRight className="w-3 h-3" />
+                          </span>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
 
               {filteredApps.length === 0 && (

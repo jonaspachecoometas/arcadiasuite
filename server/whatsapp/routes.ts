@@ -229,7 +229,7 @@ export function registerWhatsappRoutes(app: Express): void {
       
       const userId = req.user!.id;
       const config = req.body;
-      whatsappService.setAutoReplyConfig(userId, config);
+      await whatsappService.setAutoReplyConfig(userId, config);
       res.json({ success: true, config: whatsappService.getAutoReplyConfig(userId) });
     } catch (error) {
       console.error("WhatsApp set auto-reply config error:", error);

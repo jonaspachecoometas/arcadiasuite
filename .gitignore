@@ -63,3 +63,4 @@ attached_assets/
 
 # Package lock (regenerated on install)
 package-lock.json
+.claude/

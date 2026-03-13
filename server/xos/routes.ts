@@ -4,6 +4,15 @@ import { sql } from "drizzle-orm";
 
 const router = Router();
 
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  next();
+}
+
+router.use(requireAuth);
+
 // ========== CONTACTS ==========
 
 router.get("/contacts", async (req: Request, res: Response) => {
@@ -325,7 +334,7 @@ router.delete("/deals/:id", async (req: Request, res: Response) => {
 
 router.get("/conversations", async (req: Request, res: Response) => {
   try {
-    const { status, channel, assigned_to, queue_id } = req.query;
+    const { status, channel, assigned_to, queue_id, limit = 50, offset = 0 } = req.query;
     
     let query = sql`
       SELECT cv.*, 
@@ -343,7 +352,7 @@ router.get("/conversations", async (req: Request, res: Response) => {
     if (assigned_to) query = sql`${query} AND cv.assigned_to = ${assigned_to}`;
     if (queue_id) query = sql`${query} AND cv.queue_id = ${parseInt(queue_id as string)}`;
     
-    query = sql`${query} ORDER BY cv.updated_at DESC LIMIT 50`;
+    query = sql`${query} ORDER BY cv.updated_at DESC LIMIT ${parseInt(limit as string)} OFFSET ${parseInt(offset as string)}`;
     
     const result = await db.execute(query);
     res.json(result.rows || result);
@@ -373,7 +382,7 @@ router.get("/conversations/:id/messages", async (req: Request, res: Response) =>
 
 router.get("/tickets", async (req: Request, res: Response) => {
   try {
-    const { status, priority, assigned_to } = req.query;
+    const { status, priority, assigned_to, limit = 50, offset = 0 } = req.query;
     
     let query = sql`
       SELECT t.*, 
@@ -387,7 +396,7 @@ router.get("/tickets", async (req: Request, res: Response) => {
     if (priority) query = sql`${query} AND t.priority = ${priority}`;
     if (assigned_to) query = sql`${query} AND t.assigned_to = ${assigned_to}`;
     
-    query = sql`${query} ORDER BY t.created_at DESC LIMIT 50`;
+    query = sql`${query} ORDER BY t.created_at DESC LIMIT ${parseInt(limit as string)} OFFSET ${parseInt(offset as string)}`;
     
     const result = await db.execute(query);
     res.json(result.rows || result);
@@ -423,7 +432,7 @@ router.post("/tickets", async (req: Request, res: Response) => {
 
 router.get("/activities", async (req: Request, res: Response) => {
   try {
-    const { contact_id, deal_id, type, status } = req.query;
+    const { contact_id, deal_id, type, status, limit = 50, offset = 0 } = req.query;
     
     let query = sql`
       SELECT a.*, 
@@ -440,7 +449,7 @@ router.get("/activities", async (req: Request, res: Response) => {
     if (type) query = sql`${query} AND a.type = ${type}`;
     if (status) query = sql`${query} AND a.status = ${status}`;
     
-    query = sql`${query} ORDER BY a.due_at ASC NULLS LAST, a.created_at DESC LIMIT 50`;
+    query = sql`${query} ORDER BY a.due_at ASC NULLS LAST, a.created_at DESC LIMIT ${parseInt(limit as string)} OFFSET ${parseInt(offset as string)}`;
     
     const result = await db.execute(query);
     res.json(result.rows || result);

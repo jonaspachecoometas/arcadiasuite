@@ -136,7 +136,10 @@ export async function registerRoutes(
   // Arcádia Plus - SSO routes (proxy already registered at top)
   app.use("/api/plus/sso", plusSsoRoutes);
 
-  app.get("/api/tenants", async (_req, res) => {
+  app.get("/api/tenants", async (req: any, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
     try {
       const tenants = await storage.getTenants();
       res.json(tenants);
