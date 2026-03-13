@@ -1,0 +1,233 @@
+# ─── Arcádia Suite — Desenvolvimento Local ────────────────────────────────────
+# Uso: docker compose up
+# Para subir com IA local: docker compose --profile ai up
+
+name: arcadia-dev
+
+services:
+
+  # ── Banco de dados com pgvector ─────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: arcadia
+      POSTGRES_USER: arcadia
+      POSTGRES_PASSWORD: arcadia123
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/01-pgvector.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arcadia -d arcadia"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (filas de jobs) ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── App principal (Node.js + React) ─────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder          # usa stage builder em dev (hot reload via volume)
+    restart: unless-stopped
+    command: npx tsx server/index.ts
+    environment:
+      NODE_ENV: development
+      PORT: 5000
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia
+      REDIS_URL: redis://redis:6379
+      DOCKER_MODE: "true"      # desativa spawn de processos filhos
+      CONTABIL_PYTHON_URL: http://contabil:8003
+      BI_PYTHON_URL: http://bi:8004
+      AUTOMATION_PYTHON_URL: http://automation:8005
+      FISCO_PYTHON_URL: http://fisco:8002
+      PYTHON_SERVICE_URL: http://embeddings:8001
+      SESSION_SECRET: ${SESSION_SECRET:-arcadia-dev-secret-change-in-prod}
+      SSO_SECRET: ${SSO_SECRET:-arcadia-sso-secret-2024-plus-integration-key-secure}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LITELLM_BASE_URL: http://litellm:4000
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-arcadia-internal}
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/dist
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      contabil:
+        condition: service_started
+      bi:
+        condition: service_started
+
+  # ── Microserviço Contábil (Python) ──────────────────────────────────────────
+  contabil:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: contabil
+      SERVICE_PORT: 8003
+      CONTABIL_PORT: 8003
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia
+    ports:
+      - "8003:8003"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Microserviço BI Engine (Python) ─────────────────────────────────────────
+  bi:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: bi
+      SERVICE_PORT: 8004
+      BI_PORT: 8004
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia
+    ports:
+      - "8004:8004"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Microserviço Automações (Python) ────────────────────────────────────────
+  automation:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: automation
+      SERVICE_PORT: 8005
+      AUTOMATION_PORT: 8005
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia
+    ports:
+      - "8005:8005"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Microserviço Fiscal (Python) ────────────────────────────────────────────
+  fisco:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: fisco
+      SERVICE_PORT: 8002
+      FISCO_PORT: 8002
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia
+    ports:
+      - "8002:8002"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Serviço de Embeddings (pgvector via Python) ──────────────────────────────
+  embeddings:
+    build:
+      context: .
+      dockerfile: Dockerfile.python
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: embeddings
+      SERVICE_PORT: 8001
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia
+    ports:
+      - "8001:8001"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ── Apache Superset (BI avançado) ────────────────────────────────────────────
+  superset:
+    image: apache/superset:4.1.0
+    restart: unless-stopped
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-superset-secret-change-in-prod}
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia_superset
+    ports:
+      - "8088:8088"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: [bi]
+
+  # ─────────────── PERFIL: ai (Soberania de IA) ────────────────────────────────
+
+  # ── Ollama (LLMs locais) ─────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    ports:
+      - "11434:11434"
+    profiles: [ai]
+    # Para GPU NVIDIA: adicione `deploy.resources.reservations.devices`
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ── Open WebUI (interface para devs/consultores) ─────────────────────────────
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    restart: unless-stopped
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-webui-secret-change-in-prod}
+      DEFAULT_MODELS: llama3.3,qwen2.5-coder
+      ENABLE_RAG_WEB_SEARCH: "true"
+    ports:
+      - "3001:8080"
+    volumes:
+      - open_webui_data:/app/backend/data
+    depends_on:
+      - ollama
+    profiles: [ai]
+
+  # ── LiteLLM (proxy unificado de LLMs) ───────────────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    restart: unless-stopped
+    volumes:
+      - ./docker/litellm-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+      LITELLM_MASTER_KEY: ${LITELLM_API_KEY:-arcadia-internal}
+    ports:
+      - "4000:4000"
+    profiles: [ai]
+
+volumes:
+  pgdata:
+  ollama_models:
+  open_webui_data:

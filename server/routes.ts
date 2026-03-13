@@ -58,6 +58,7 @@ import blackboardRoutes from "./blackboard/routes";
 import pipelineRoutes from "./blackboard/pipelineRoutes";
 import { startAllAgents } from "./blackboard/agents";
 import { loadModuleRoutes } from "./modules/loader";
+import graphRoutes from "./graph/routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -83,6 +84,7 @@ export async function registerRoutes(
   registerAutomationRoutes(app);
   registerAutomationEngineRoutes(app);
   registerBiRoutes(app);
+  app.use("/api/graph", graphRoutes);
   registerBiEngineRoutes(app);
   registerMetaSetRoutes(app);
   registerCommEngineRoutes(app);
