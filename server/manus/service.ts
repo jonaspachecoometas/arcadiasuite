@@ -128,7 +128,27 @@ REGRA CRÍTICA PARA RESPOSTA FINAL:
 - Se analisou um documento, inclua os dados extraídos E sua interpretação`;
 
 class ManusService extends EventEmitter {
+  private pendingApprovals: Map<string, { tool: string; input: Record<string, any> }> = new Map();
+
   private async executeTool(tool: string, input: Record<string, any>, userId: string): Promise<ToolResult> {
+    // Dangerous tools require explicit user approval via ask_human first
+    const DANGEROUS_TOOLS = new Set(["shell", "write_file", "python_execute"]);
+    if (DANGEROUS_TOOLS.has(tool)) {
+      const approvalKey = `${userId}:${tool}:${JSON.stringify(input)}`;
+      if (!this.pendingApprovals.has(approvalKey)) {
+        this.pendingApprovals.set(approvalKey, { tool, input });
+        const preview = tool === "shell" ? input.command
+          : tool === "write_file" ? `Escrever em: ${input.path}`
+          : `Executar código Python (${String(input.code || "").substring(0, 80)}...)`;
+        return {
+          success: false,
+          output: `[APROVAÇÃO NECESSÁRIA] Esta ação requer confirmação: ${preview}. Use ask_human para solicitar aprovação antes de prosseguir.`,
+          error: "requires_approval"
+        };
+      }
+      this.pendingApprovals.delete(approvalKey);
+    }
+
     try {
       switch (tool) {
         case "web_search":

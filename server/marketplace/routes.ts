@@ -5,6 +5,52 @@ import { eq, desc, and, sql } from "drizzle-orm";
 
 const router = Router();
 
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  next();
+}
+
+// My apps: returns active subscriptions for the current user's tenant
+// Public modules (isCore=true) are always included
+router.get("/my-apps", requireAuth, async (req: any, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+
+    // Core modules always available
+    const coreModules = await db
+      .select({ code: marketplaceModules.code, route: marketplaceModules.route })
+      .from(marketplaceModules)
+      .where(and(eq(marketplaceModules.isCore, true), eq(marketplaceModules.isActive, true)));
+
+    // Subscribed modules for this tenant
+    const subscribed = tenantId
+      ? await db
+          .select({ code: marketplaceModules.code, route: marketplaceModules.route })
+          .from(moduleSubscriptions)
+          .innerJoin(marketplaceModules, eq(moduleSubscriptions.moduleId, marketplaceModules.id))
+          .where(
+            and(
+              eq(moduleSubscriptions.tenantId, tenantId),
+              eq(moduleSubscriptions.status, "active"),
+              eq(marketplaceModules.isActive, true)
+            )
+          )
+      : [];
+
+    const allCodes = new Set([
+      ...coreModules.map((m) => m.code),
+      ...subscribed.map((m) => m.code),
+    ]);
+
+    res.json({ subscribedCodes: [...allCodes], tenantId: tenantId || null });
+  } catch (error) {
+    console.error("Error fetching my-apps:", error);
+    res.status(500).json({ error: "Failed to fetch subscribed apps" });
+  }
+});
+
 router.get("/modules", async (req: Request, res: Response) => {
   try {
     const modules = await db
