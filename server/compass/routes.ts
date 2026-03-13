@@ -2274,4 +2274,124 @@ router.put("/projects/:projectId/history", async (req: Request, res: Response) =
   }
 });
 
+// ========== AI BRIEFING & HEALTH SCORE ==========
+
+router.post("/projects/:projectId/ai-brief", async (req: Request, res: Response) => {
+  try {
+    const tenantId = await getTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant não encontrado" });
+    const projectId = parseInt(req.params.projectId);
+    const hasAccess = await validateProjectAccess(projectId, tenantId);
+    if (!hasAccess) return res.status(403).json({ error: "Acesso negado ao projeto" });
+
+    const project = await compassStorage.getProject(projectId, tenantId);
+    const tasks = await compassStorage.getTasks(projectId);
+    const pdcaCycles = await compassStorage.getPdcaCycles(tenantId, projectId);
+
+    const openTasks = tasks.filter((t: any) => t.status !== "done" && t.status !== "completed");
+    const overdue = tasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "done");
+    const pdcaOpen = pdcaCycles.filter((c: any) => c.status === "open" || c.status === "in_progress");
+
+    const OpenAI = (await import("openai")).default;
+    const openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      timeout: 30000,
+    });
+
+    const prompt = `Você é um consultor de gestão de projetos. Analise o projeto abaixo e gere um briefing executivo em português.
+
+PROJETO: ${project?.name}
+DESCRIÇÃO: ${project?.description || "Não informada"}
+STATUS: ${project?.status}
+FASE: ${project?.currentPhase || "Não definida"}
+
+RESUMO DE TAREFAS:
+- Total: ${tasks.length}
+- Em aberto: ${openTasks.length}
+- Atrasadas: ${overdue.length}
+
+PDCA ATIVOS: ${pdcaOpen.length}
+
+${overdue.length > 0 ? `TAREFAS ATRASADAS:\n${overdue.slice(0, 5).map((t: any) => `- ${t.title} (responsável: ${t.assignedTo || "não atribuído"})`).join("\n")}` : ""}
+
+Gere um briefing com:
+1. **Situação atual** (2-3 linhas)
+2. **Principais riscos** (lista com até 3 itens)
+3. **Ações prioritárias** (lista com até 5 ações, cada uma com responsável sugerido e prazo)
+4. **Score de saúde** (0-100 com justificativa)
+
+Seja direto e objetivo.`;
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 800,
+      temperature: 0.3,
+    });
+
+    const briefText = response.choices[0]?.message?.content || "";
+
+    // Extract health score from response
+    const scoreMatch = briefText.match(/score[^\d]*(\d{1,3})/i) || briefText.match(/(\d{1,3})[^\d]*\//);
+    const healthScore = scoreMatch ? Math.min(100, Math.max(0, parseInt(scoreMatch[1]))) : null;
+
+    res.json({
+      projectId,
+      brief: briefText,
+      healthScore,
+      meta: {
+        totalTasks: tasks.length,
+        openTasks: openTasks.length,
+        overdueTasks: overdue.length,
+        activePdca: pdcaOpen.length,
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/projects/:projectId/health", async (req: Request, res: Response) => {
+  try {
+    const tenantId = await getTenantId(req);
+    if (!tenantId) return res.status(403).json({ error: "Tenant não encontrado" });
+    const projectId = parseInt(req.params.projectId);
+    const hasAccess = await validateProjectAccess(projectId, tenantId);
+    if (!hasAccess) return res.status(403).json({ error: "Acesso negado ao projeto" });
+
+    const tasks = await compassStorage.getTasks(projectId);
+    const pdcaCycles = await compassStorage.getPdcaCycles(tenantId, projectId);
+
+    const total = tasks.length || 1;
+    const done = tasks.filter((t: any) => t.status === "done" || t.status === "completed").length;
+    const overdue = tasks.filter((t: any) => t.dueDate && new Date(t.dueDate) < new Date() && t.status !== "done").length;
+    const pdcaComplete = pdcaCycles.filter((c: any) => c.status === "completed").length;
+    const pdcaTotal = pdcaCycles.length || 1;
+
+    const completionScore = (done / total) * 40;
+    const overdueScore = Math.max(0, 30 - (overdue / total) * 30);
+    const pdcaScore = (pdcaComplete / pdcaTotal) * 30;
+    const healthScore = Math.round(completionScore + overdueScore + pdcaScore);
+
+    const level = healthScore >= 80 ? "saudável" : healthScore >= 50 ? "atenção" : "crítico";
+    const color = healthScore >= 80 ? "green" : healthScore >= 50 ? "yellow" : "red";
+
+    res.json({
+      projectId,
+      healthScore,
+      level,
+      color,
+      breakdown: {
+        completion: { score: Math.round(completionScore), weight: "40%", tasks: `${done}/${tasks.length}` },
+        timeliness: { score: Math.round(overdueScore), weight: "30%", overdue },
+        pdca: { score: Math.round(pdcaScore), weight: "30%", cycles: `${pdcaComplete}/${pdcaCycles.length}` },
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

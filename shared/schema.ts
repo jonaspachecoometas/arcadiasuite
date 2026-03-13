@@ -158,6 +158,7 @@ export type InsertExternalAppPermission = z.infer<typeof insertExternalAppPermis
 // ========== PRODUCTIVITY HUB - Pages & Blocks (Notion-style) ==========
 export const workspacePages = pgTable("workspace_pages", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   parentId: integer("parent_id"), // for nested pages
   title: text("title").notNull().default("Sem título"),
@@ -207,6 +208,7 @@ export const dashboardWidgets = pgTable("dashboard_widgets", {
 // ========== QUICK NOTES (Scratch Pad) ==========
 export const quickNotes = pgTable("quick_notes", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   content: text("content").notNull(),
   isPinned: integer("is_pinned").default(0),
@@ -218,6 +220,7 @@ export const quickNotes = pgTable("quick_notes", {
 // ========== UNIFIED INBOX / ACTIVITY FEED ==========
 export const activityFeed = pgTable("activity_feed", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   actorId: varchar("actor_id").references(() => users.id), // who performed the action
   type: text("type").notNull(), // created, updated, deleted, mentioned, assigned, completed, commented
@@ -281,6 +284,7 @@ export type InsertCommandHistoryEntry = z.infer<typeof insertCommandHistorySchem
 
 export const conversations = pgTable("conversations", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
@@ -312,6 +316,7 @@ export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export const knowledgeBase = pgTable("knowledge_base", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   content: text("content").notNull(),
   author: text("author").notNull(),
@@ -409,6 +414,7 @@ export type InsertTaskExecution = z.infer<typeof insertTaskExecutionSchema>;
 
 export const chatThreads = pgTable("chat_threads", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   type: text("type").notNull().default("direct"),
   name: text("name"),
   createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
@@ -531,6 +537,7 @@ export type InsertWhatsappTicket = z.infer<typeof insertWhatsappTicketSchema>;
 
 export const manusRuns = pgTable("manus_runs", {
   id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   prompt: text("prompt").notNull(),
   status: text("status").default("running"),

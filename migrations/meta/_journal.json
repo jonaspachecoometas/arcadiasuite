@@ -15,6 +15,13 @@
       "when": 1741824000000,
       "tag": "0001_whatsapp_auto_reply_config",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1741824060000,
+      "tag": "0002_tenant_isolation",
+      "breakpoints": true
     }
   ]
 }
