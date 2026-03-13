@@ -12,6 +12,8 @@ import * as erpnextService from "../erpnext/service";
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  timeout: 30000,
+  maxRetries: 3,
 });
 
 const SYSTEM_PROMPT = `Você é o Agente Arcádia Manus, um assistente empresarial inteligente e proativo.

@@ -9,7 +9,7 @@ import { EventEmitter } from "events";
 import * as fs from "fs";
 import * as path from "path";
 import { db } from "../../db/index";
-import { whatsappContacts, whatsappMessages, whatsappTickets, graphNodes, graphEdges, chatThreads, chatParticipants, chatMessages, pcCrmLeads, tenants } from "@shared/schema";
+import { whatsappContacts, whatsappMessages, whatsappTickets, whatsappSessions, graphNodes, graphEdges, chatThreads, chatParticipants, chatMessages, pcCrmLeads, tenants } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { learningService } from "../learning/service";
 import OpenAI from "openai";
@@ -57,8 +57,17 @@ class WhatsAppService extends EventEmitter {
     }
   }
 
-  setAutoReplyConfig(userId: string, config: Partial<AutoReplyConfig>): void {
-    const existing = this.autoReplyConfigs.get(userId) || {
+  async setAutoReplyConfig(userId: string, config: Partial<AutoReplyConfig>): Promise<void> {
+    const existing = this.autoReplyConfigs.get(userId) || await this.loadAutoReplyConfig(userId);
+    const merged = { ...existing, ...config };
+    this.autoReplyConfigs.set(userId, merged);
+    await db.update(whatsappSessions)
+      .set({ autoReplyConfig: merged })
+      .where(eq(whatsappSessions.userId, userId));
+  }
+
+  async loadAutoReplyConfig(userId: string): Promise<AutoReplyConfig> {
+    const defaults: AutoReplyConfig = {
       enabled: false,
       welcomeMessage: "Olá! Obrigado por entrar em contato. Em breve um atendente irá te responder.",
       businessHours: { start: 8, end: 18 },
@@ -66,7 +75,16 @@ class WhatsAppService extends EventEmitter {
       aiEnabled: true,
       maxAutoRepliesPerContact: 3,
     };
-    this.autoReplyConfigs.set(userId, { ...existing, ...config });
+    try {
+      const [session] = await db.select({ autoReplyConfig: whatsappSessions.autoReplyConfig })
+        .from(whatsappSessions)
+        .where(eq(whatsappSessions.userId, userId))
+        .limit(1);
+      if (session?.autoReplyConfig) {
+        return { ...defaults, ...(session.autoReplyConfig as Partial<AutoReplyConfig>) };
+      }
+    } catch {}
+    return defaults;
   }
 
   getAutoReplyConfig(userId: string): AutoReplyConfig {

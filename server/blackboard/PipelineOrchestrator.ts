@@ -58,6 +58,7 @@ const ALL_PHASES: PipelinePhase[] = ["design", "codegen", "validation", "staging
 
 class PipelineOrchestrator extends EventEmitter {
   private activeMonitors: Map<number, NodeJS.Timeout> = new Map();
+  private processingMonitors: Set<number> = new Set();
 
   async createPipeline(prompt: string, userId: string = "system", metadata?: any): Promise<XosDevPipeline> {
     const correlationId = randomUUID();
@@ -169,10 +170,14 @@ class PipelineOrchestrator extends EventEmitter {
     if (this.activeMonitors.has(pipelineId)) return;
 
     const interval = setInterval(async () => {
+      if (this.processingMonitors.has(pipelineId)) return;
+      this.processingMonitors.add(pipelineId);
       try {
         await this.checkPhaseProgress(pipelineId, mainTaskId);
       } catch (error) {
         console.error(`[PipelineOrchestrator] Erro no monitor #${pipelineId}:`, error);
+      } finally {
+        this.processingMonitors.delete(pipelineId);
       }
     }, 3000);
 

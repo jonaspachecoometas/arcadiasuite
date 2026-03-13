@@ -41,7 +41,10 @@ case "$SERVICE_NAME" in
       --workers 2
     ;;
   embeddings)
-    exec python server/python/embeddings_service.py
+    exec python -m uvicorn server.python.embeddings_service:app \
+      --host 0.0.0.0 \
+      --port "$SERVICE_PORT" \
+      --workers 1
     ;;
   *)
     echo "[entrypoint] ERRO: SERVICE_NAME desconhecido: $SERVICE_NAME"

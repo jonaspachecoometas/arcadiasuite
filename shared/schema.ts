@@ -443,6 +443,7 @@ export const whatsappSessions = pgTable("whatsapp_sessions", {
   status: text("status").default("disconnected"),
   phoneNumber: text("phone_number"),
   lastSync: timestamp("last_sync"),
+  autoReplyConfig: jsonb("auto_reply_config").$type<Record<string, any>>(),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 

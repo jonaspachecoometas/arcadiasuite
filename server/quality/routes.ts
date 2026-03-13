@@ -13,6 +13,15 @@ import { eq, desc, and, gte, lte, like, or, sql, isNull } from "drizzle-orm";
 
 const router = Router();
 
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  next();
+}
+
+router.use(requireAuth);
+
 // ========== AMOSTRAS (RF-QC01) ==========
 
 router.get("/samples", async (req: Request, res: Response) => {
