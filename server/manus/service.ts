@@ -335,6 +335,13 @@ class ManusService extends EventEmitter {
           return this.toolRetailStats(input.period, input.storeId);
         case "retail_report":
           return this.toolRetailReport(input.type, input.dateFrom, input.dateTo, input.storeId);
+        // ========== AUTOMAÇÃO + XOS + INBOX ==========
+        case "automation_trigger":
+          return this.toolAutomationTrigger(input.automation_id, input.event_type, input.payload, input.tenant_id, userId);
+        case "xos_action":
+          return this.toolXosAction(input.action, input.data, userId);
+        case "inbox_action":
+          return this.toolInboxAction(input.action, input.conversation_id, input.data, userId);
         case "finish":
           let finishOutput = input.answer || "";
           if (input.chart) {
@@ -3869,6 +3876,253 @@ class ManusService extends EventEmitter {
       return { success: true, output };
     } catch (error: any) {
       return { success: false, output: "", error: `Erro ao gerar relatório: ${error.message}` };
+    }
+  }
+
+  // ============================================================
+  // TOOL: automation_trigger
+  // ============================================================
+  private async toolAutomationTrigger(
+    automationId: number | undefined,
+    eventType: string | undefined,
+    payload: string | undefined,
+    tenantId: number | undefined,
+    userId: string
+  ): Promise<ToolResult> {
+    try {
+      const parsedPayload = payload ? (typeof payload === 'string' ? JSON.parse(payload) : payload) : {};
+
+      if (automationId) {
+        // Direct automation execution via AutomationService
+        const { automationService } = await import("../automations/service");
+        const result = await automationService.runAutomation(automationId, userId, { ...parsedPayload, triggered_by: "manus" });
+        return {
+          success: result.success,
+          output: `Automação #${automationId} ${result.success ? 'executada com sucesso' : 'falhou'}. Log ID: ${result.logId}. ${result.result || result.error || ''}`,
+        };
+      }
+
+      if (eventType) {
+        // Emit event to automation engine via HTTP
+        const engineHost = process.env.AUTOMATION_ENGINE_HOST || "localhost";
+        const enginePort = process.env.AUTOMATION_ENGINE_PORT || "8005";
+        const response = await fetch(`http://${engineHost}:${enginePort}/xos/trigger`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event_type: eventType, tenant_id: tenantId, payload: parsedPayload }),
+        });
+
+        if (!response.ok) throw new Error(`Engine retornou ${response.status}`);
+        const result: any = await response.json();
+        return {
+          success: true,
+          output: `Evento '${eventType}' emitido. ${result.triggered_handlers?.length || 0} handlers ativados.`,
+        };
+      }
+
+      return { success: false, output: "", error: "Informe automation_id ou event_type" };
+    } catch (error: any) {
+      return { success: false, output: "", error: `Erro ao disparar automação: ${error.message}` };
+    }
+  }
+
+  // ============================================================
+  // TOOL: xos_action
+  // ============================================================
+  private async toolXosAction(action: string, data: string | object, userId: string): Promise<ToolResult> {
+    try {
+      const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+
+      switch (action) {
+        case "create_contact": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_contacts (name, email, phone, whatsapp, type, company, position, source, tags, notes)
+            VALUES (${parsed.name}, ${parsed.email || null}, ${parsed.phone || null}, ${parsed.whatsapp || null},
+                    ${parsed.type || 'lead'}, ${parsed.company || null}, ${parsed.position || null},
+                    ${parsed.source || 'manus'}, ${parsed.tags || null}, ${parsed.notes || null})
+            RETURNING id, name, email, type
+          `);
+          const contact = (result.rows || result)[0] as any;
+          return { success: true, output: `Contato criado: ${contact.name} (ID: ${contact.id}, tipo: ${contact.type})` };
+        }
+
+        case "update_contact": {
+          const { id, ...fields } = parsed;
+          if (!id) return { success: false, output: "", error: "id obrigatório para update_contact" };
+          const sets = Object.entries(fields).map(([k, v]) => `${k} = '${v}'`).join(", ");
+          await db.execute(sql`UPDATE xos_contacts SET ${sql.raw(sets)}, updated_at = NOW() WHERE id = ${id}`);
+          return { success: true, output: `Contato #${id} atualizado com sucesso.` };
+        }
+
+        case "create_deal": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_deals (title, pipeline_id, stage_id, contact_id, company_id, value, currency, assigned_to, expected_close_date, notes)
+            VALUES (${parsed.title}, ${parsed.pipeline_id}, ${parsed.stage_id}, ${parsed.contact_id || null},
+                    ${parsed.company_id || null}, ${parsed.value || null}, ${parsed.currency || 'BRL'},
+                    ${parsed.assigned_to || null}, ${parsed.expected_close_date || null}, ${parsed.notes || null})
+            RETURNING id, title, value
+          `);
+          const deal = (result.rows || result)[0] as any;
+          return { success: true, output: `Deal criado: "${deal.title}" (ID: ${deal.id}, valor: ${deal.value})` };
+        }
+
+        case "move_deal_stage": {
+          const { deal_id, stage_id } = parsed;
+          if (!deal_id || !stage_id) return { success: false, output: "", error: "deal_id e stage_id obrigatórios" };
+          await db.execute(sql`UPDATE xos_deals SET stage_id = ${stage_id}, updated_at = NOW() WHERE id = ${deal_id}`);
+          return { success: true, output: `Deal #${deal_id} movido para estágio #${stage_id}.` };
+        }
+
+        case "create_ticket": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_tickets (title, description, contact_id, conversation_id, priority, status, category, assigned_to)
+            VALUES (${parsed.title}, ${parsed.description || null}, ${parsed.contact_id || null},
+                    ${parsed.conversation_id || null}, ${parsed.priority || 'medium'}, 'open',
+                    ${parsed.category || null}, ${parsed.assigned_to || null})
+            RETURNING id, title, priority
+          `);
+          const ticket = (result.rows || result)[0] as any;
+          return { success: true, output: `Ticket criado: "${ticket.title}" (ID: ${ticket.id}, prioridade: ${ticket.priority})` };
+        }
+
+        case "assign_agent": {
+          const { conversation_id, agent_id } = parsed;
+          if (!conversation_id) return { success: false, output: "", error: "conversation_id obrigatório" };
+          await db.execute(sql`UPDATE xos_conversations SET assigned_to = ${agent_id}, updated_at = NOW() WHERE id = ${conversation_id}`);
+          return { success: true, output: `Agente #${agent_id} atribuído à conversa #${conversation_id}.` };
+        }
+
+        case "create_task": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_activities (contact_id, deal_id, type, title, description, due_date, assigned_to, status)
+            VALUES (${parsed.contact_id || null}, ${parsed.deal_id || null}, 'task',
+                    ${parsed.title}, ${parsed.description || null},
+                    ${parsed.due_date || null}, ${parsed.assigned_to || null}, 'pending')
+            RETURNING id, title
+          `);
+          const task = (result.rows || result)[0] as any;
+          return { success: true, output: `Tarefa criada: "${task.title}" (ID: ${task.id})` };
+        }
+
+        case "create_activity": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_activities (contact_id, deal_id, type, title, description, scheduled_at, assigned_to)
+            VALUES (${parsed.contact_id || null}, ${parsed.deal_id || null}, ${parsed.type || 'note'},
+                    ${parsed.title}, ${parsed.description || null},
+                    ${parsed.scheduled_at || null}, ${parsed.assigned_to || null})
+            RETURNING id, title, type
+          `);
+          const act = (result.rows || result)[0] as any;
+          return { success: true, output: `Atividade criada: "${act.title}" (tipo: ${act.type}, ID: ${act.id})` };
+        }
+
+        case "create_note": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_internal_notes (conversation_id, content, created_by, is_pinned)
+            VALUES (${parsed.conversation_id || null}, ${parsed.content}, ${userId}, ${parsed.is_pinned || false})
+            RETURNING id
+          `);
+          const note = (result.rows || result)[0] as any;
+          return { success: true, output: `Nota interna criada (ID: ${note.id})` };
+        }
+
+        default:
+          return { success: false, output: "", error: `Ação XOS desconhecida: ${action}. Use: create_contact, update_contact, create_deal, move_deal_stage, create_ticket, assign_agent, create_task, create_activity, create_note` };
+      }
+    } catch (error: any) {
+      return { success: false, output: "", error: `Erro na ação XOS '${action}': ${error.message}` };
+    }
+  }
+
+  // ============================================================
+  // TOOL: inbox_action
+  // ============================================================
+  private async toolInboxAction(
+    action: string,
+    conversationId: number | undefined,
+    data: string | object | undefined,
+    userId: string
+  ): Promise<ToolResult> {
+    try {
+      const parsed = data ? (typeof data === 'string' ? JSON.parse(data) : data) : {} as any;
+
+      switch (action) {
+        case "close_conversation": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          await db.execute(sql`
+            UPDATE xos_conversations SET status = 'closed', closed_at = NOW(), updated_at = NOW()
+            WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Conversa #${conversationId} fechada.` };
+        }
+
+        case "transfer_conversation": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          const { queue_id, agent_id } = parsed;
+          await db.execute(sql`
+            UPDATE xos_conversations SET
+              queue_id = COALESCE(${queue_id || null}, queue_id),
+              assigned_to = COALESCE(${agent_id || null}, assigned_to),
+              updated_at = NOW()
+            WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Conversa #${conversationId} transferida para fila #${queue_id || 'N/A'} / agente #${agent_id || 'N/A'}.` };
+        }
+
+        case "send_message": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          const { content, content_type } = parsed;
+          if (!content) return { success: false, output: "", error: "content obrigatório" };
+          await db.execute(sql`
+            INSERT INTO xos_messages (conversation_id, direction, sender_type, sender_name, content, content_type)
+            VALUES (${conversationId}, 'outbound', 'agent', 'Manus IA', ${content}, ${content_type || 'text'})
+          `);
+          await db.execute(sql`
+            UPDATE xos_conversations SET last_message = ${content}, updated_at = NOW() WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Mensagem enviada na conversa #${conversationId}: "${content.substring(0, 100)}"` };
+        }
+
+        case "add_label": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          const { label } = parsed;
+          await db.execute(sql`
+            UPDATE xos_conversations SET
+              tags = COALESCE(tags, '') || ${label ? ',' + label : ''},
+              updated_at = NOW()
+            WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Etiqueta '${label}' adicionada à conversa #${conversationId}.` };
+        }
+
+        case "resolve_ticket": {
+          const { ticket_id, resolution } = parsed;
+          if (!ticket_id) return { success: false, output: "", error: "ticket_id obrigatório" };
+          await db.execute(sql`
+            UPDATE xos_tickets SET status = 'resolved', resolution = ${resolution || null},
+              resolved_at = NOW(), updated_at = NOW()
+            WHERE id = ${ticket_id}
+          `);
+          return { success: true, output: `Ticket #${ticket_id} resolvido.` };
+        }
+
+        case "escalate_ticket": {
+          const { ticket_id, priority, reason } = parsed;
+          if (!ticket_id) return { success: false, output: "", error: "ticket_id obrigatório" };
+          await db.execute(sql`
+            UPDATE xos_tickets SET priority = ${priority || 'urgent'},
+              notes = CONCAT(COALESCE(notes, ''), ' [Escalado por Manus: ', ${reason || 'sem motivo'}, ']'),
+              updated_at = NOW()
+            WHERE id = ${ticket_id}
+          `);
+          return { success: true, output: `Ticket #${ticket_id} escalado para prioridade ${priority || 'urgent'}.` };
+        }
+
+        default:
+          return { success: false, output: "", error: `Ação de inbox desconhecida: ${action}. Use: close_conversation, transfer_conversation, send_message, add_label, resolve_ticket, escalate_ticket` };
+      }
+    } catch (error: any) {
+      return { success: false, output: "", error: `Erro na ação de inbox '${action}': ${error.message}` };
     }
   }
 }
