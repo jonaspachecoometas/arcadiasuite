@@ -2,6 +2,21 @@ import { Router, type Request, type Response } from "express";
 import { db } from "../../db/index";
 import { sql } from "drizzle-orm";
 
+// ── Event Bus helper ─────────────────────────────────────────────────────────
+async function emitCrmEvent(eventType: string, payload: Record<string, any>) {
+  const engineHost = process.env.AUTOMATION_ENGINE_HOST || "localhost";
+  const enginePort = process.env.AUTOMATION_ENGINE_PORT || "8005";
+  try {
+    await fetch(`http://${engineHost}:${enginePort}/xos/trigger`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_type: eventType, payload }),
+    });
+  } catch {
+    // Non-blocking — automation engine may be offline
+  }
+}
+
 const router = Router();
 
 function requireAuth(req: any, res: any, next: any) {
@@ -82,12 +97,15 @@ router.post("/contacts", async (req: Request, res: Response) => {
     
     const result = await db.execute(sql`
       INSERT INTO xos_contacts (name, email, phone, whatsapp, type, company, position, source, tags, notes)
-      VALUES (${name}, ${email || null}, ${phone || null}, ${whatsapp || null}, ${type || 'lead'}, 
+      VALUES (${name}, ${email || null}, ${phone || null}, ${whatsapp || null}, ${type || 'lead'},
               ${company || null}, ${position || null}, ${source || 'manual'}, ${tags || null}, ${notes || null})
       RETURNING *
     `);
-    
-    res.status(201).json((result.rows || result)[0]);
+
+    const contact = (result.rows || result)[0] as any;
+    // Emit CRM event (non-blocking)
+    emitCrmEvent("crm.contact.created", { contact_id: contact.id, name: contact.name, type: contact.type, email: contact.email, source: contact.source });
+    res.status(201).json(contact);
   } catch (error) {
     console.error("Error creating contact:", error);
     res.status(500).json({ error: "Failed to create contact" });
@@ -239,13 +257,15 @@ router.post("/deals", async (req: Request, res: Response) => {
     
     const result = await db.execute(sql`
       INSERT INTO xos_deals (pipeline_id, stage_id, contact_id, company_id, title, value, expected_close_date, assigned_to, notes)
-      VALUES (${parseInt(pipeline_id)}, ${parseInt(stage_id)}, ${contact_id ? parseInt(contact_id) : null}, 
-              ${company_id ? parseInt(company_id) : null}, ${title}, ${parseFloat(value) || 0}, 
+      VALUES (${parseInt(pipeline_id)}, ${parseInt(stage_id)}, ${contact_id ? parseInt(contact_id) : null},
+              ${company_id ? parseInt(company_id) : null}, ${title}, ${parseFloat(value) || 0},
               ${expected_close_date || null}, ${assigned_to || null}, ${notes || null})
       RETURNING *
     `);
-    
-    res.status(201).json((result.rows || result)[0]);
+
+    const deal = (result.rows || result)[0] as any;
+    emitCrmEvent("crm.deal.created", { deal_id: deal.id, title: deal.title, value: deal.value, pipeline_id: deal.pipeline_id, stage_id: deal.stage_id, contact_id: deal.contact_id });
+    res.status(201).json(deal);
   } catch (error) {
     console.error("Error creating deal:", error);
     res.status(500).json({ error: "Failed to create deal" });
@@ -275,16 +295,19 @@ router.put("/deals/:id/stage", async (req: Request, res: Response) => {
     }
     
     const result = await db.execute(sql`
-      UPDATE xos_deals SET 
-        stage_id = ${parseInt(stage_id)}, 
+      UPDATE xos_deals SET
+        stage_id = ${parseInt(stage_id)},
         status = ${status},
         closed_at = ${closedAt},
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
       RETURNING *
     `);
-    
-    res.json((result.rows || result)[0]);
+
+    const updated = (result.rows || result)[0] as any;
+    const evtType = status === 'won' ? "crm.deal.won" : status === 'lost' ? "crm.deal.lost" : "crm.deal.stage_changed";
+    emitCrmEvent(evtType, { deal_id: id, stage_id: parseInt(stage_id), status, title: updated?.title });
+    res.json(updated);
   } catch (error) {
     console.error("Error updating deal stage:", error);
     res.status(500).json({ error: "Failed to update deal stage" });
@@ -420,8 +443,10 @@ router.post("/tickets", async (req: Request, res: Response) => {
       VALUES (${ticketNumber}, ${contact_id ? parseInt(contact_id) : null}, ${subject}, ${description || null}, ${category || null}, ${priority || 'normal'})
       RETURNING *
     `);
-    
-    res.status(201).json((result.rows || result)[0]);
+
+    const ticket = (result.rows || result)[0] as any;
+    emitCrmEvent("crm.ticket.created", { ticket_id: ticket.id, ticket_number: ticketNumber, subject, priority: ticket.priority, contact_id: ticket.contact_id });
+    res.status(201).json(ticket);
   } catch (error) {
     console.error("Error creating ticket:", error);
     res.status(500).json({ error: "Failed to create ticket" });
@@ -712,5 +737,317 @@ router.delete("/scheduled-messages/:id", async (req: Request, res: Response) => 
     res.status(500).json({ error: "Failed to cancel scheduled message" });
   }
 });
+
+// ========== XOS AUTOMATIONS ENGINE ==========
+
+router.get("/automations", async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.query;
+    let query = sql`SELECT * FROM xos_automations WHERE 1=1`;
+    if (tenantId) query = sql`${query} AND tenant_id = ${parseInt(tenantId as string)}`;
+    query = sql`${query} ORDER BY created_at DESC`;
+    const result = await db.execute(query);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching xos automations:", error);
+    res.status(500).json({ error: "Failed to fetch automations" });
+  }
+});
+
+router.post("/automations", async (req: Request, res: Response) => {
+  try {
+    const { tenantId, name, description, triggerType, triggerConfig, actions, conditions } = req.body;
+    const user = (req as any).user;
+    if (!name || !triggerType) return res.status(400).json({ error: "name and triggerType required" });
+
+    const result = await db.execute(sql`
+      INSERT INTO xos_automations (tenant_id, name, description, trigger_type, trigger_config, actions, conditions, created_by)
+      VALUES (${tenantId || null}, ${name}, ${description || null}, ${triggerType},
+              ${triggerConfig ? JSON.stringify(triggerConfig) : null},
+              ${actions ? JSON.stringify(actions) : '[]'},
+              ${conditions ? JSON.stringify(conditions) : '[]'},
+              ${user?.id || null})
+      RETURNING *
+    `);
+    res.status(201).json((result.rows || result)[0]);
+  } catch (error) {
+    console.error("Error creating xos automation:", error);
+    res.status(500).json({ error: "Failed to create automation" });
+  }
+});
+
+router.patch("/automations/:id", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const { name, description, triggerType, triggerConfig, actions, conditions, isActive } = req.body;
+
+    const result = await db.execute(sql`
+      UPDATE xos_automations SET
+        name = COALESCE(${name || null}, name),
+        description = COALESCE(${description || null}, description),
+        trigger_type = COALESCE(${triggerType || null}, trigger_type),
+        trigger_config = COALESCE(${triggerConfig ? JSON.stringify(triggerConfig) : null}, trigger_config),
+        actions = COALESCE(${actions ? JSON.stringify(actions) : null}, actions),
+        conditions = COALESCE(${conditions ? JSON.stringify(conditions) : null}, conditions),
+        is_active = COALESCE(${isActive !== undefined ? isActive : null}, is_active),
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `);
+    res.json((result.rows || result)[0]);
+  } catch (error) {
+    console.error("Error updating xos automation:", error);
+    res.status(500).json({ error: "Failed to update automation" });
+  }
+});
+
+router.delete("/automations/:id", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    await db.execute(sql`DELETE FROM xos_automations WHERE id = ${id}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting xos automation:", error);
+    res.status(500).json({ error: "Failed to delete automation" });
+  }
+});
+
+// Execute a single XOS automation immediately
+router.post("/automations/:id/execute", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const user = (req as any).user;
+
+    const result = await db.execute(sql`SELECT * FROM xos_automations WHERE id = ${id}`);
+    const automation = (result.rows || result)[0] as any;
+    if (!automation) return res.status(404).json({ error: "Automation not found" });
+
+    const execResult = await executeXosAutomation(automation, req.body?.triggerData || {}, user?.id);
+    res.json(execResult);
+  } catch (error) {
+    console.error("Error executing xos automation:", error);
+    res.status(500).json({ error: "Failed to execute automation" });
+  }
+});
+
+// Internal webhook: called by the automation engine when a CRM event fires
+router.post("/automations/webhook/crm-event", async (req: Request, res: Response) => {
+  try {
+    const { event_type, payload, tenant_id } = req.body;
+    if (!event_type) return res.status(400).json({ error: "event_type required" });
+
+    const fired = await fireCrmAutomations(event_type, payload || {}, tenant_id);
+    res.json({ success: true, automations_fired: fired });
+  } catch (error) {
+    console.error("Error processing CRM event webhook:", error);
+    res.status(500).json({ error: "Failed to process CRM event" });
+  }
+});
+
+// ── XOS Automation Executor ─────────────────────────────────────────────────
+
+async function evaluateConditions(conditions: any[], triggerData: Record<string, any>): Promise<boolean> {
+  if (!conditions || conditions.length === 0) return true;
+  for (const cond of conditions) {
+    const actual = triggerData[cond.field];
+    const expected = cond.value;
+    let passes = false;
+    switch (cond.operator) {
+      case "==": passes = actual == expected; break;
+      case "!=": passes = actual != expected; break;
+      case ">": passes = Number(actual) > Number(expected); break;
+      case "<": passes = Number(actual) < Number(expected); break;
+      case ">=": passes = Number(actual) >= Number(expected); break;
+      case "<=": passes = Number(actual) <= Number(expected); break;
+      case "contains": passes = String(actual).includes(String(expected)); break;
+      case "exists": passes = actual !== null && actual !== undefined; break;
+      default: passes = actual == expected;
+    }
+    if (!passes) return false;
+  }
+  return true;
+}
+
+async function executeXosAction(action: { type: string; config: any }, triggerData: Record<string, any>, userId?: string): Promise<string> {
+  const config = action.config || {};
+  const interpolate = (s: string) => s?.replace(/\{\{(\w+)\}\}/g, (_: string, k: string) => String(triggerData[k] ?? ''));
+
+  switch (action.type) {
+    case "send_email": {
+      const to = interpolate(config.to || '');
+      const subject = interpolate(config.subject || 'Notificação Arcádia');
+      const body = interpolate(config.body || '');
+      // Route through automation engine event bus
+      const engineHost = process.env.AUTOMATION_ENGINE_HOST || "localhost";
+      const enginePort = process.env.AUTOMATION_ENGINE_PORT || "8005";
+      await fetch(`http://${engineHost}:${enginePort}/events/emit?event_type=system.send_email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, subject, body }),
+      }).catch(() => {});
+      return `Email enfileirado para ${to}`;
+    }
+
+    case "send_whatsapp": {
+      const to = interpolate(config.to || '');
+      const message = interpolate(config.message || '');
+      const engineHost = process.env.AUTOMATION_ENGINE_HOST || "localhost";
+      const enginePort = process.env.AUTOMATION_ENGINE_PORT || "8005";
+      await fetch(`http://${engineHost}:${enginePort}/events/emit?event_type=system.send_whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to, message, channel_id: config.channel_id }),
+      }).catch(() => {});
+      return `WhatsApp enfileirado para ${to}`;
+    }
+
+    case "create_task": {
+      const title = interpolate(config.title || 'Tarefa automática');
+      await db.execute(sql`
+        INSERT INTO xos_activities (contact_id, type, title, description, assigned_to, status)
+        VALUES (${triggerData.contact_id || null}, 'task', ${title},
+                ${interpolate(config.description || '')},
+                ${config.assigned_to || null}, 'pending')
+      `);
+      return `Tarefa criada: ${title}`;
+    }
+
+    case "assign_agent": {
+      const convId = triggerData.conversation_id || config.conversation_id;
+      const agentId = config.agent_id;
+      if (convId && agentId) {
+        await db.execute(sql`UPDATE xos_conversations SET assigned_to = ${agentId}, updated_at = NOW() WHERE id = ${convId}`);
+        return `Agente #${agentId} atribuído à conversa #${convId}`;
+      }
+      return "assign_agent: conversation_id ou agent_id ausente";
+    }
+
+    case "update_field": {
+      const table = config.table || 'xos_contacts';
+      const recordId = triggerData[config.id_field || 'contact_id'] || config.record_id;
+      const field = config.field;
+      const value = interpolate(config.value || '');
+      if (recordId && field) {
+        await db.execute(sql`UPDATE ${sql.raw(table)} SET ${sql.raw(field)} = ${value}, updated_at = NOW() WHERE id = ${recordId}`);
+        return `Campo ${field} atualizado em ${table}#${recordId}`;
+      }
+      return "update_field: dados insuficientes";
+    }
+
+    case "move_deal_stage": {
+      const dealId = triggerData.deal_id || config.deal_id;
+      const stageId = config.stage_id;
+      if (dealId && stageId) {
+        await db.execute(sql`UPDATE xos_deals SET stage_id = ${stageId}, updated_at = NOW() WHERE id = ${dealId}`);
+        emitCrmEvent("crm.deal.stage_changed", { deal_id: dealId, stage_id: stageId, triggered_by: "automation" });
+        return `Deal #${dealId} movido para estágio #${stageId}`;
+      }
+      return "move_deal_stage: deal_id ou stage_id ausente";
+    }
+
+    case "notify_team": {
+      const message = interpolate(config.message || 'Evento de automação disparado');
+      // Emit notification event
+      const engineHost = process.env.AUTOMATION_ENGINE_HOST || "localhost";
+      const enginePort = process.env.AUTOMATION_ENGINE_PORT || "8005";
+      await fetch(`http://${engineHost}:${enginePort}/events/emit?event_type=system.notification`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, channel: config.channel || "system", title: config.title || "Automação" }),
+      }).catch(() => {});
+      return `Notificação enviada: ${message.substring(0, 80)}`;
+    }
+
+    case "webhook": {
+      const url = config.url;
+      if (!url) return "webhook: URL não configurada";
+      try {
+        const resp = await fetch(url, {
+          method: config.method || "POST",
+          headers: { "Content-Type": "application/json", ...(config.headers || {}) },
+          body: JSON.stringify({ trigger_data: triggerData, config }),
+        });
+        return `Webhook ${url} → ${resp.status}`;
+      } catch (e: any) {
+        return `Webhook falhou: ${e.message}`;
+      }
+    }
+
+    case "agent_task": {
+      const prompt = interpolate(config.prompt || 'Execute a automation task');
+      if (userId) {
+        const { automationService } = await import("../automations/service");
+        // Create a temporary automation with agent_task action
+        const tempResult = await fetch(
+          `http://localhost:${process.env.PORT || 5000}/api/automations`,
+          { method: "GET", headers: { "Content-Type": "application/json" } }
+        ).catch(() => null);
+        // Emit manus task via event bus
+        const engineHost = process.env.AUTOMATION_ENGINE_HOST || "localhost";
+        const enginePort = process.env.AUTOMATION_ENGINE_PORT || "8005";
+        await fetch(`http://${engineHost}:${enginePort}/events/emit?event_type=system.manus_task`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, user_id: userId }),
+        }).catch(() => {});
+      }
+      return `Tarefa do agente IA enfileirada: ${prompt.substring(0, 100)}`;
+    }
+
+    default:
+      return `Ação desconhecida: ${action.type}`;
+  }
+}
+
+async function executeXosAutomation(automation: any, triggerData: Record<string, any>, userId?: string) {
+  const actions = typeof automation.actions === 'string' ? JSON.parse(automation.actions) : (automation.actions || []);
+  const conditions = typeof automation.conditions === 'string' ? JSON.parse(automation.conditions) : (automation.conditions || []);
+
+  const conditionsMet = await evaluateConditions(conditions, triggerData);
+  if (!conditionsMet) {
+    return { executed: false, reason: "conditions_not_met", automation_id: automation.id };
+  }
+
+  const results: string[] = [];
+  for (const action of actions) {
+    try {
+      const result = await executeXosAction(action, triggerData, userId);
+      results.push(`✓ ${action.type}: ${result}`);
+    } catch (e: any) {
+      results.push(`✗ ${action.type}: ${e.message}`);
+    }
+  }
+
+  // Update execution stats
+  await db.execute(sql`
+    UPDATE xos_automations
+    SET execution_count = execution_count + 1, last_executed_at = NOW()
+    WHERE id = ${automation.id}
+  `).catch(() => {});
+
+  return { executed: true, automation_id: automation.id, results };
+}
+
+export async function fireCrmAutomations(eventType: string, payload: Record<string, any>, tenantId?: number) {
+  try {
+    let query = sql`SELECT * FROM xos_automations WHERE is_active = true AND trigger_type = ${eventType}`;
+    if (tenantId) query = sql`${query} AND (tenant_id = ${tenantId} OR tenant_id IS NULL)`;
+
+    const result = await db.execute(query);
+    const automations = (result.rows || result) as any[];
+
+    let fired = 0;
+    for (const automation of automations) {
+      await executeXosAutomation(automation, payload).catch(() => {});
+      fired++;
+    }
+    return fired;
+  } catch {
+    return 0;
+  }
+}
 
 export default router;
