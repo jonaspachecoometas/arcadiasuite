@@ -47,9 +47,11 @@ import lmsRoutes from "./lms/routes";
 import xosRoutes from "./xos/routes";
 import governanceRoutes from "./governance/routes";
 import { setupPlusProxy } from "./plus/proxy";
-import { setupMetabaseProxy } from "./metabase/proxy";
+import { setupSupersetProxy } from "./superset/proxy";
+import { registerSupersetRoutes } from "./superset/routes";
+import { setupErpNextProxy } from "./erpnext/proxy";
+import { importErpNextRulesForTenant } from "./soe/erpnext-rule-importer";
 import { registerEngineRoomRoutes } from "./engine-room/routes";
-import { registerMetaSetRoutes } from "./metaset/routes";
 import plusSsoRoutes from "./plus/sso";
 import migrationRoutes from "./migration/routes";
 import { githubRoutes } from "./integrations/github";
@@ -69,9 +71,13 @@ export async function registerRoutes(
   
   // Arcádia Plus - Proxy registered AFTER session but BEFORE auth-protected routes
   await setupPlusProxy(app);
-  
-  // Metabase BI - Proxy to Metabase instance
-  setupMetabaseProxy(app);
+
+  // Apache Superset - Arcádia Insights (substitui Metabase)
+  setupSupersetProxy(app);
+  registerSupersetRoutes(app);
+
+  // ERPNext container proxy (ativo apenas em DOCKER_MODE ou ERPNEXT_PROXY_ENABLED=true)
+  setupErpNextProxy(app);
   
   registerChatRoutes(app);
   registerSoeRoutes(app);
@@ -86,7 +92,6 @@ export async function registerRoutes(
   registerBiRoutes(app);
   app.use("/api/graph", graphRoutes);
   registerBiEngineRoutes(app);
-  registerMetaSetRoutes(app);
   registerCommEngineRoutes(app);
   registerLearningRoutes(app);
   app.use("/api/compass", compassRoutes);
@@ -108,6 +113,17 @@ export async function registerRoutes(
   registerCommunityRoutes(app);
   app.use("/api/para", paraRoutes);
   app.use("/api/erpnext", erpnextRoutes);
+
+  // SOE — Importar regras do ERPNext para soe_regras
+  app.post("/api/soe/erpnext/import-rules", async (req: any, res) => {
+    try {
+      const tenantId = req.user?.tenantId || req.body?.tenantId;
+      const result = await importErpNextRulesForTenant(tenantId);
+      res.json({ ok: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   app.use("/api/quality", qualityRoutes);
   app.use("/api/lowcode", lowcodeRoutes);
   app.use("/api/dev-agent", devAgentRoutes);
