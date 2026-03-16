@@ -92,6 +92,9 @@ class CrmEventType(str, Enum):
     MESSAGE_RECEIVED = "crm.message.received"
     CONVERSATION_CLOSED = "crm.conversation.closed"
     CAMPAIGN_SENT = "crm.campaign.sent"
+    CSAT_RECEIVED = "crm.csat.received"
+    SLA_BREACHED = "crm.sla.breached"
+    PROTOCOL_CREATED = "crm.protocol.created"
 
 
 class CronExpression:
