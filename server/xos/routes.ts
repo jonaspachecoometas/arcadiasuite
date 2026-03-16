@@ -738,6 +738,602 @@ router.delete("/scheduled-messages/:id", async (req: Request, res: Response) => 
   }
 });
 
+// ========== SUPERVISOR MONITOR ==========
+
+router.get("/supervisor/overview", async (req: Request, res: Response) => {
+  try {
+    const { tenantId } = req.query;
+    const tenantFilter = tenantId ? sql` AND tenant_id = ${parseInt(tenantId as string)}` : sql``;
+
+    const [convStats, ticketStats, agentStats] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'open') as open_conversations,
+          COUNT(*) FILTER (WHERE status = 'pending') as pending_conversations,
+          COUNT(*) FILTER (WHERE status = 'resolved' AND updated_at > NOW() - INTERVAL '24 hours') as resolved_today,
+          COUNT(*) FILTER (WHERE assigned_to IS NULL AND status IN ('open','pending')) as unassigned,
+          ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(closed_at, NOW()) - created_at))/60)::numeric, 1) as avg_handle_time_minutes
+        FROM xos_conversations WHERE 1=1${tenantFilter}
+      `),
+      db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE status = 'open') as open_tickets,
+          COUNT(*) FILTER (WHERE status = 'resolved' AND updated_at > NOW() - INTERVAL '24 hours') as resolved_today,
+          COUNT(*) FILTER (WHERE priority = 'urgent' AND status = 'open') as urgent_open,
+          COUNT(*) FILTER (WHERE sla_due_at < NOW() AND status != 'resolved') as sla_breached
+        FROM xos_tickets WHERE 1=1${tenantFilter}
+      `),
+      db.execute(sql`
+        SELECT assigned_to as agent_id, COUNT(*) as active_conversations
+        FROM xos_conversations
+        WHERE assigned_to IS NOT NULL AND status IN ('open','pending')
+        GROUP BY assigned_to ORDER BY active_conversations DESC LIMIT 20
+      `),
+    ]);
+
+    const conv = ((convStats.rows || convStats)[0] || {}) as any;
+    const tick = ((ticketStats.rows || ticketStats)[0] || {}) as any;
+
+    res.json({
+      conversations: {
+        open: Number(conv.open_conversations || 0),
+        pending: Number(conv.pending_conversations || 0),
+        resolved_today: Number(conv.resolved_today || 0),
+        unassigned: Number(conv.unassigned || 0),
+        avg_handle_time_minutes: Number(conv.avg_handle_time_minutes || 0),
+      },
+      tickets: {
+        open: Number(tick.open_tickets || 0),
+        resolved_today: Number(tick.resolved_today || 0),
+        urgent_open: Number(tick.urgent_open || 0),
+        sla_breached: Number(tick.sla_breached || 0),
+      },
+      agents_active: (agentStats.rows || agentStats),
+      generated_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error fetching supervisor overview:", error);
+    res.status(500).json({ error: "Failed to fetch supervisor overview" });
+  }
+});
+
+router.get("/supervisor/queues", async (req: Request, res: Response) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        q.id, q.name, q.color,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.status IN ('open','pending')) as active_conversations,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.assigned_to IS NULL AND c.status IN ('open','pending')) as waiting,
+        COUNT(DISTINCT qu.user_id) as total_agents,
+        ROUND(AVG(
+          CASE WHEN ct.first_response_at IS NOT NULL
+          THEN EXTRACT(EPOCH FROM (ct.first_response_at - ct.queued_at))/60 END
+        )::numeric, 1) as avg_first_response_minutes
+      FROM xos_queues q
+      LEFT JOIN xos_conversations c ON c.queue_id = q.id
+      LEFT JOIN xos_queue_users qu ON qu.queue_id = q.id AND qu.is_active = true
+      LEFT JOIN xos_conversation_tracking ct ON ct.queue_id = q.id AND ct.queued_at > NOW() - INTERVAL '24 hours'
+      WHERE q.is_active = true
+      GROUP BY q.id, q.name, q.color
+      ORDER BY active_conversations DESC
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching supervisor queues:", error);
+    res.status(500).json({ error: "Failed to fetch queue stats" });
+  }
+});
+
+router.get("/supervisor/agents", async (req: Request, res: Response) => {
+  try {
+    const { queueId } = req.query;
+    const queueFilter = queueId ? sql` AND qu.queue_id = ${parseInt(queueId as string)}` : sql``;
+    const result = await db.execute(sql`
+      SELECT
+        u.id as agent_id, u.name as agent_name, u.avatar,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.status IN ('open','pending')) as active_conversations,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'resolved' AND c.updated_at > NOW() - INTERVAL '24 hours') as resolved_today,
+        ROUND(AVG(CASE WHEN c.satisfaction_score IS NOT NULL THEN c.satisfaction_score END)::numeric, 2) as avg_csat,
+        ROUND(AVG(CASE WHEN c.closed_at IS NOT NULL THEN EXTRACT(EPOCH FROM (c.closed_at - c.created_at))/60 END)::numeric, 1) as avg_handle_time_minutes,
+        array_agg(DISTINCT q.name) FILTER (WHERE q.name IS NOT NULL) as queues
+      FROM users u
+      INNER JOIN xos_queue_users qu ON qu.user_id = u.id AND qu.is_active = true
+      LEFT JOIN xos_queues q ON q.id = qu.queue_id
+      LEFT JOIN xos_conversations c ON c.assigned_to = u.id AND c.created_at > NOW() - INTERVAL '24 hours'
+      WHERE 1=1${queueFilter}
+      GROUP BY u.id, u.name, u.avatar
+      ORDER BY active_conversations DESC
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching supervisor agents:", error);
+    res.status(500).json({ error: "Failed to fetch agent stats" });
+  }
+});
+
+router.get("/supervisor/conversations/live", async (req: Request, res: Response) => {
+  try {
+    const { queueId, agentId, status = "open" } = req.query;
+    let query = sql`
+      SELECT c.*, ct2.name as contact_name, ct2.phone as contact_phone,
+        q.name as queue_name, q.color as queue_color,
+        ROUND(EXTRACT(EPOCH FROM (NOW() - c.created_at))/60, 1) as age_minutes
+      FROM xos_conversations c
+      LEFT JOIN xos_contacts ct2 ON ct2.id = c.contact_id
+      LEFT JOIN xos_queues q ON q.id = c.queue_id
+      WHERE c.status = ${status as string}
+    `;
+    if (queueId) query = sql`${query} AND c.queue_id = ${parseInt(queueId as string)}`;
+    if (agentId) query = sql`${query} AND c.assigned_to = ${agentId as string}`;
+    query = sql`${query} ORDER BY c.created_at ASC LIMIT 100`;
+    const result = await db.execute(query);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching live conversations:", error);
+    res.status(500).json({ error: "Failed to fetch live conversations" });
+  }
+});
+
+
+// ========== CSAT ==========
+
+router.post("/conversations/:id/csat", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const { score, comment } = req.body;
+    if (!score || score < 1 || score > 5) return res.status(400).json({ error: "Score must be 1-5" });
+
+    await db.execute(sql`UPDATE xos_conversations SET satisfaction_score = ${score}, satisfaction_comment = ${comment || null}, updated_at = NOW() WHERE id = ${id}`);
+    await db.execute(sql`UPDATE xos_conversation_tracking SET rating_score = ${score}, rating_comment = ${comment || null}, rated_at = NOW() WHERE conversation_id = ${id}`);
+    await db.execute(sql`UPDATE xos_protocols SET satisfaction_score = ${score}, satisfaction_comment = ${comment || null}, updated_at = NOW() WHERE conversation_id = ${id}`);
+
+    emitCrmEvent("crm.csat.received", { conversation_id: id, score, comment });
+    res.json({ success: true, score, comment });
+  } catch (error) {
+    console.error("Error recording CSAT:", error);
+    res.status(500).json({ error: "Failed to record CSAT" });
+  }
+});
+
+router.post("/tickets/:id/csat", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const { score, comment } = req.body;
+    if (!score || score < 1 || score > 5) return res.status(400).json({ error: "Score must be 1-5" });
+
+    await db.execute(sql`UPDATE xos_tickets SET satisfaction_score = ${score}, satisfaction_comment = ${comment || null}, updated_at = NOW() WHERE id = ${id}`);
+    await db.execute(sql`UPDATE xos_protocols SET satisfaction_score = ${score}, satisfaction_comment = ${comment || null}, updated_at = NOW() WHERE ticket_id = ${id}`);
+
+    emitCrmEvent("crm.csat.received", { ticket_id: id, score, comment });
+    res.json({ success: true, score, comment });
+  } catch (error) {
+    console.error("Error recording ticket CSAT:", error);
+    res.status(500).json({ error: "Failed to record CSAT" });
+  }
+});
+
+router.get("/csat/summary", async (req: Request, res: Response) => {
+  try {
+    const { period = "30d", queueId } = req.query;
+    const intervalMap: Record<string, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days" };
+    const interval = intervalMap[period as string] || "30 days";
+    const intSql = sql.raw("INTERVAL '" + interval + "'");
+    const qFilter = queueId ? sql` AND c.queue_id = ${parseInt(queueId as string)}` : sql``;
+
+    const result = await db.execute(sql`
+      SELECT
+        COUNT(*) FILTER (WHERE c.satisfaction_score IS NOT NULL) as total_responses,
+        ROUND(AVG(c.satisfaction_score)::numeric, 2) as avg_score,
+        COUNT(*) FILTER (WHERE c.satisfaction_score = 5) as score_5,
+        COUNT(*) FILTER (WHERE c.satisfaction_score = 4) as score_4,
+        COUNT(*) FILTER (WHERE c.satisfaction_score = 3) as score_3,
+        COUNT(*) FILTER (WHERE c.satisfaction_score <= 2) as score_1_2,
+        ROUND(100.0 * COUNT(*) FILTER (WHERE c.satisfaction_score >= 4) /
+          NULLIF(COUNT(*) FILTER (WHERE c.satisfaction_score IS NOT NULL), 0), 1) as satisfaction_rate_pct
+      FROM xos_conversations c
+      WHERE c.updated_at > NOW() - ${intSql}${qFilter}
+    `);
+
+    const row = ((result.rows || result)[0] || {}) as any;
+    res.json({
+      period,
+      total_responses: Number(row.total_responses || 0),
+      avg_score: Number(row.avg_score || 0),
+      satisfaction_rate_pct: Number(row.satisfaction_rate_pct || 0),
+      distribution: { 5: Number(row.score_5 || 0), 4: Number(row.score_4 || 0), 3: Number(row.score_3 || 0), "1-2": Number(row.score_1_2 || 0) },
+    });
+  } catch (error) {
+    console.error("Error fetching CSAT summary:", error);
+    res.status(500).json({ error: "Failed to fetch CSAT summary" });
+  }
+});
+
+
+// ========== PROTOCOLOS ==========
+
+router.get("/protocols", async (req: Request, res: Response) => {
+  try {
+    const { status, contactId, search, limit = 50, offset = 0 } = req.query;
+    let query = sql`
+      SELECT p.*, ct.name as contact_name, q.name as queue_name
+      FROM xos_protocols p
+      LEFT JOIN xos_contacts ct ON ct.id = p.contact_id
+      LEFT JOIN xos_queues q ON q.id = p.queue_id WHERE 1=1
+    `;
+    if (status) query = sql`${query} AND p.status = ${status}`;
+    if (contactId) query = sql`${query} AND p.contact_id = ${parseInt(contactId as string)}`;
+    if (search) query = sql`${query} AND (p.protocol_number ILIKE ${'%' + search + '%'} OR p.subject ILIKE ${'%' + search + '%'})`;
+    query = sql`${query} ORDER BY p.created_at DESC LIMIT ${parseInt(limit as string)} OFFSET ${parseInt(offset as string)}`;
+    const result = await db.execute(query);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching protocols:", error);
+    res.status(500).json({ error: "Failed to fetch protocols" });
+  }
+});
+
+router.post("/protocols", async (req: Request, res: Response) => {
+  try {
+    const { conversationId, ticketId, contactId, queueId, subject, slaMinutes } = req.body;
+    const today = new Date();
+    const datePart = today.toISOString().slice(0, 10).replace(/-/g, "");
+    const seqResult = await db.execute(sql`SELECT COUNT(*) as cnt FROM xos_protocols WHERE created_at::date = CURRENT_DATE`);
+    const seq = Number(((seqResult.rows || seqResult)[0] as any)?.cnt || 0) + 1;
+    const protocolNumber = `${datePart}-${String(seq).padStart(6, "0")}`;
+    const slaDeadline = slaMinutes ? new Date(Date.now() + slaMinutes * 60000).toISOString() : null;
+    const result = await db.execute(sql`
+      INSERT INTO xos_protocols (protocol_number, conversation_id, ticket_id, contact_id, queue_id, subject, sla_deadline)
+      VALUES (${protocolNumber}, ${conversationId || null}, ${ticketId || null}, ${contactId || null}, ${queueId || null}, ${subject || null}, ${slaDeadline})
+      RETURNING *
+    `);
+    const protocol = (result.rows || result)[0] as any;
+    emitCrmEvent("crm.protocol.created", { protocol_id: protocol.id, protocol_number: protocolNumber, contact_id: contactId });
+    res.status(201).json(protocol);
+  } catch (error) {
+    console.error("Error creating protocol:", error);
+    res.status(500).json({ error: "Failed to create protocol" });
+  }
+});
+
+router.patch("/protocols/:id", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const { status, assignedTo } = req.body;
+    const result = await db.execute(sql`
+      UPDATE xos_protocols SET
+        status = COALESCE(${status || null}, status),
+        assigned_to = COALESCE(${assignedTo || null}, assigned_to),
+        resolved_at = CASE WHEN ${status || null} = 'resolved' THEN NOW() ELSE resolved_at END,
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *
+    `);
+    res.json((result.rows || result)[0]);
+  } catch (error) {
+    console.error("Error updating protocol:", error);
+    res.status(500).json({ error: "Failed to update protocol" });
+  }
+});
+
+router.post("/conversations/:id/protocol", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const existing = await db.execute(sql`SELECT id, protocol_number FROM xos_protocols WHERE conversation_id = ${id}`);
+    if ((existing.rows || existing).length > 0) return res.json((existing.rows || existing)[0]);
+
+    const convResult = await db.execute(sql`SELECT * FROM xos_conversations WHERE id = ${id}`);
+    const conv = (convResult.rows || convResult)[0] as any;
+    if (!conv) return res.status(404).json({ error: "Conversation not found" });
+
+    let slaMinutes: number | null = null;
+    if (conv.queue_id) {
+      const slaResult = await db.execute(sql`SELECT resolution_minutes FROM xos_sla_policies WHERE queue_id = ${conv.queue_id} AND is_active = true LIMIT 1`);
+      const sla = (slaResult.rows || slaResult)[0] as any;
+      if (sla) slaMinutes = sla.resolution_minutes;
+    }
+
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const seqResult = await db.execute(sql`SELECT COUNT(*) as cnt FROM xos_protocols WHERE created_at::date = CURRENT_DATE`);
+    const seq = Number(((seqResult.rows || seqResult)[0] as any)?.cnt || 0) + 1;
+    const protocolNumber = `${datePart}-${String(seq).padStart(6, "0")}`;
+    const slaDeadline = slaMinutes ? new Date(Date.now() + slaMinutes * 60000).toISOString() : null;
+
+    const result = await db.execute(sql`
+      INSERT INTO xos_protocols (protocol_number, conversation_id, contact_id, queue_id, sla_deadline)
+      VALUES (${protocolNumber}, ${id}, ${conv.contact_id || null}, ${conv.queue_id || null}, ${slaDeadline})
+      RETURNING *
+    `);
+    res.status(201).json((result.rows || result)[0]);
+  } catch (error) {
+    console.error("Error creating protocol for conversation:", error);
+    res.status(500).json({ error: "Failed to create protocol" });
+  }
+});
+
+
+// ========== BUSINESS HOURS ==========
+
+router.get("/queues/:id/business-hours", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const result = await db.execute(sql`SELECT id, name, schedules, out_of_hours_message FROM xos_queues WHERE id = ${id}`);
+    const queue = (result.rows || result)[0] as any;
+    if (!queue) return res.status(404).json({ error: "Queue not found" });
+    res.json({ queue_id: id, queue_name: queue.name, schedules: queue.schedules || [], out_of_hours_message: queue.out_of_hours_message });
+  } catch (error) {
+    console.error("Error fetching business hours:", error);
+    res.status(500).json({ error: "Failed to fetch business hours" });
+  }
+});
+
+router.put("/queues/:id/business-hours", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const { schedules, outOfHoursMessage } = req.body;
+    const result = await db.execute(sql`
+      UPDATE xos_queues SET
+        schedules = ${JSON.stringify(schedules || [])},
+        out_of_hours_message = COALESCE(${outOfHoursMessage || null}, out_of_hours_message),
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING id, name, schedules, out_of_hours_message
+    `);
+    res.json((result.rows || result)[0]);
+  } catch (error) {
+    console.error("Error updating business hours:", error);
+    res.status(500).json({ error: "Failed to update business hours" });
+  }
+});
+
+router.get("/queues/:id/is-open", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const result = await db.execute(sql`SELECT schedules, out_of_hours_message FROM xos_queues WHERE id = ${id}`);
+    const queue = (result.rows || result)[0] as any;
+    if (!queue) return res.status(404).json({ error: "Queue not found" });
+    const schedules: Array<{ dayOfWeek: number; startTime: string; endTime: string }> = queue.schedules || [];
+    if (!schedules.length) return res.json({ is_open: true, reason: "no_schedule_configured" });
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const todaySchedule = schedules.find(s => s.dayOfWeek === dayOfWeek);
+    const isOpen = todaySchedule ? currentTime >= todaySchedule.startTime && currentTime <= todaySchedule.endTime : false;
+    res.json({ is_open: isOpen, current_time: currentTime, day_of_week: dayOfWeek, schedule: todaySchedule || null, out_of_hours_message: isOpen ? null : queue.out_of_hours_message });
+  } catch (error) {
+    console.error("Error checking business hours:", error);
+    res.status(500).json({ error: "Failed to check business hours" });
+  }
+});
+
+
+// ========== SLA POLICIES ==========
+
+router.get("/sla-policies", async (req: Request, res: Response) => {
+  try {
+    const { queueId } = req.query;
+    let query = sql`SELECT sp.*, q.name as queue_name FROM xos_sla_policies sp LEFT JOIN xos_queues q ON q.id = sp.queue_id WHERE sp.is_active = true`;
+    if (queueId) query = sql`${query} AND sp.queue_id = ${parseInt(queueId as string)}`;
+    query = sql`${query} ORDER BY sp.priority`;
+    const result = await db.execute(query);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching SLA policies:", error);
+    res.status(500).json({ error: "Failed to fetch SLA policies" });
+  }
+});
+
+router.post("/sla-policies", async (req: Request, res: Response) => {
+  try {
+    const { name, queueId, priority, firstResponseMinutes, resolutionMinutes, notifyOnBreach } = req.body;
+    if (!name) return res.status(400).json({ error: "name required" });
+    const result = await db.execute(sql`
+      INSERT INTO xos_sla_policies (name, queue_id, priority, first_response_minutes, resolution_minutes, notify_on_breach)
+      VALUES (${name}, ${queueId || null}, ${priority || 'normal'}, ${firstResponseMinutes || 60}, ${resolutionMinutes || 480}, ${notifyOnBreach !== false})
+      RETURNING *
+    `);
+    res.status(201).json((result.rows || result)[0]);
+  } catch (error) {
+    console.error("Error creating SLA policy:", error);
+    res.status(500).json({ error: "Failed to create SLA policy" });
+  }
+});
+
+router.patch("/sla-policies/:id", async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+    const { name, priority, firstResponseMinutes, resolutionMinutes, notifyOnBreach, isActive } = req.body;
+    const result = await db.execute(sql`
+      UPDATE xos_sla_policies SET
+        name = COALESCE(${name || null}, name),
+        priority = COALESCE(${priority || null}, priority),
+        first_response_minutes = COALESCE(${firstResponseMinutes ?? null}, first_response_minutes),
+        resolution_minutes = COALESCE(${resolutionMinutes ?? null}, resolution_minutes),
+        notify_on_breach = COALESCE(${notifyOnBreach ?? null}, notify_on_breach),
+        is_active = COALESCE(${isActive ?? null}, is_active),
+        updated_at = NOW()
+      WHERE id = ${id} RETURNING *
+    `);
+    res.json((result.rows || result)[0]);
+  } catch (error) {
+    console.error("Error updating SLA policy:", error);
+    res.status(500).json({ error: "Failed to update SLA policy" });
+  }
+});
+
+router.post("/sla-policies/check-breaches", async (req: Request, res: Response) => {
+  try {
+    const ticketBreaches = await db.execute(sql`
+      UPDATE xos_tickets SET updated_at = updated_at
+      WHERE sla_due_at < NOW() AND status NOT IN ('resolved', 'closed')
+      RETURNING id, ticket_number, priority, contact_id
+    `);
+    const protocolBreaches = await db.execute(sql`
+      UPDATE xos_protocols SET sla_breach = true, updated_at = NOW()
+      WHERE sla_deadline < NOW() AND sla_breach = false AND status != 'resolved'
+      RETURNING id, protocol_number, contact_id
+    `);
+    const breachedTickets = (ticketBreaches.rows || ticketBreaches) as any[];
+    const breachedProtocols = (protocolBreaches.rows || protocolBreaches) as any[];
+    for (const t of breachedTickets) emitCrmEvent("crm.sla.breached", { type: "ticket", ticket_id: t.id, ticket_number: t.ticket_number, priority: t.priority });
+    for (const p of breachedProtocols) emitCrmEvent("crm.sla.breached", { type: "protocol", protocol_id: p.id, protocol_number: p.protocol_number });
+    res.json({ success: true, breached_tickets: breachedTickets.length, breached_protocols: breachedProtocols.length });
+  } catch (error) {
+    console.error("Error checking SLA breaches:", error);
+    res.status(500).json({ error: "Failed to check SLA breaches" });
+  }
+});
+
+
+// ========== REPORTS / ANALYTICS ==========
+
+router.get("/reports/overview", async (req: Request, res: Response) => {
+  try {
+    const { period = "30d" } = req.query;
+    const intervalMap: Record<string, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days", "1y": "1 year" };
+    const interval = intervalMap[period as string] || "30 days";
+    const intSql = sql.raw("INTERVAL '" + interval + "'");
+
+    const [convReport, ticketReport, contactReport, dealReport] = await Promise.all([
+      db.execute(sql`
+        SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'resolved') as resolved,
+          COUNT(*) FILTER (WHERE status = 'open') as open,
+          ROUND(AVG(satisfaction_score)::numeric, 2) as avg_csat,
+          ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(closed_at, NOW()) - created_at))/60)::numeric, 1) as avg_handle_minutes,
+          COUNT(DISTINCT channel) as channels_used
+        FROM xos_conversations WHERE created_at > NOW() - ${intSql}
+      `),
+      db.execute(sql`
+        SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE status = 'resolved') as resolved,
+          COUNT(*) FILTER (WHERE status = 'open') as open,
+          COUNT(*) FILTER (WHERE sla_due_at < NOW() AND status != 'resolved') as sla_breaches,
+          ROUND(AVG(satisfaction_score)::numeric, 2) as avg_csat
+        FROM xos_tickets WHERE created_at > NOW() - ${intSql}
+      `),
+      db.execute(sql`
+        SELECT COUNT(*) as total_contacts, COUNT(*) FILTER (WHERE type = 'lead') as leads,
+          COUNT(*) FILTER (WHERE type = 'customer') as customers,
+          COUNT(*) FILTER (WHERE created_at > NOW() - ${intSql}) as new_in_period
+        FROM xos_contacts
+      `),
+      db.execute(sql`
+        SELECT COUNT(*) as total_deals, COUNT(*) FILTER (WHERE status = 'won') as won,
+          COUNT(*) FILTER (WHERE status = 'lost') as lost,
+          COALESCE(SUM(value) FILTER (WHERE status = 'won'), 0) as won_value,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE status = 'won') /
+            NULLIF(COUNT(*) FILTER (WHERE status IN ('won','lost')), 0), 1) as win_rate_pct
+        FROM xos_deals WHERE created_at > NOW() - ${intSql}
+      `),
+    ]);
+
+    const conv = ((convReport.rows || convReport)[0] || {}) as any;
+    const tick = ((ticketReport.rows || ticketReport)[0] || {}) as any;
+    const cont = ((contactReport.rows || contactReport)[0] || {}) as any;
+    const deal = ((dealReport.rows || dealReport)[0] || {}) as any;
+
+    res.json({
+      period,
+      conversations: {
+        total: Number(conv.total || 0), resolved: Number(conv.resolved || 0), open: Number(conv.open || 0),
+        avg_csat: Number(conv.avg_csat || 0), avg_handle_minutes: Number(conv.avg_handle_minutes || 0), channels_used: Number(conv.channels_used || 0),
+      },
+      tickets: {
+        total: Number(tick.total || 0), resolved: Number(tick.resolved || 0), open: Number(tick.open || 0),
+        sla_breaches: Number(tick.sla_breaches || 0), avg_csat: Number(tick.avg_csat || 0),
+      },
+      contacts: {
+        total: Number(cont.total_contacts || 0), leads: Number(cont.leads || 0), customers: Number(cont.customers || 0), new_in_period: Number(cont.new_in_period || 0),
+      },
+      deals: {
+        total: Number(deal.total_deals || 0), won: Number(deal.won || 0), lost: Number(deal.lost || 0),
+        won_value: Number(deal.won_value || 0), win_rate_pct: Number(deal.win_rate_pct || 0),
+      },
+      generated_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Error fetching reports overview:", error);
+    res.status(500).json({ error: "Failed to fetch overview report" });
+  }
+});
+
+router.get("/reports/agents", async (req: Request, res: Response) => {
+  try {
+    const { period = "30d", queueId } = req.query;
+    const intervalMap: Record<string, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days" };
+    const interval = intervalMap[period as string] || "30 days";
+    const intSql = sql.raw("INTERVAL '" + interval + "'");
+    const qFilter = queueId ? sql` AND qu.queue_id = ${parseInt(queueId as string)}` : sql``;
+
+    const result = await db.execute(sql`
+      SELECT
+        u.id as agent_id, u.name as agent_name,
+        COUNT(DISTINCT c.id) as conversations_handled,
+        COUNT(DISTINCT c.id) FILTER (WHERE c.status = 'resolved') as resolved,
+        ROUND(AVG(c.satisfaction_score)::numeric, 2) as avg_csat,
+        ROUND(AVG(CASE WHEN c.closed_at IS NOT NULL THEN EXTRACT(EPOCH FROM (c.closed_at - c.created_at))/60 END)::numeric, 1) as avg_handle_minutes,
+        COUNT(DISTINCT t.id) as tickets_handled,
+        COUNT(DISTINCT t.id) FILTER (WHERE t.status = 'resolved') as tickets_resolved
+      FROM users u
+      INNER JOIN xos_queue_users qu ON qu.user_id = u.id AND qu.is_active = true
+      LEFT JOIN xos_conversations c ON c.assigned_to = u.id AND c.created_at > NOW() - ${intSql}
+      LEFT JOIN xos_tickets t ON t.assigned_to = u.id AND t.created_at > NOW() - ${intSql}
+      WHERE 1=1${qFilter}
+      GROUP BY u.id, u.name
+      ORDER BY conversations_handled DESC
+    `);
+    res.json(result.rows || result);
+  } catch (error) {
+    console.error("Error fetching agent report:", error);
+    res.status(500).json({ error: "Failed to fetch agent report" });
+  }
+});
+
+router.get("/reports/sla", async (req: Request, res: Response) => {
+  try {
+    const { period = "30d" } = req.query;
+    const intervalMap: Record<string, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days" };
+    const interval = intervalMap[period as string] || "30 days";
+    const intSql = sql.raw("INTERVAL '" + interval + "'");
+
+    const [protResult, tickResult] = await Promise.all([
+      db.execute(sql`
+        SELECT COUNT(*) as total, COUNT(*) FILTER (WHERE sla_breach = true) as breached,
+          COUNT(*) FILTER (WHERE sla_breach = false AND status = 'resolved') as compliant,
+          ROUND(100.0 * COUNT(*) FILTER (WHERE sla_breach = false AND status = 'resolved') /
+            NULLIF(COUNT(*) FILTER (WHERE status = 'resolved'), 0), 1) as compliance_rate_pct
+        FROM xos_protocols WHERE created_at > NOW() - ${intSql}
+      `),
+      db.execute(sql`
+        SELECT priority, COUNT(*) as total,
+          COUNT(*) FILTER (WHERE sla_due_at < NOW() AND status != 'resolved') as breached,
+          ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(resolved_at, NOW()) - created_at))/60)::numeric, 1) as avg_resolution_minutes
+        FROM xos_tickets WHERE created_at > NOW() - ${intSql}
+        GROUP BY priority ORDER BY priority
+      `),
+    ]);
+
+    const prot = ((protResult.rows || protResult)[0] || {}) as any;
+    res.json({
+      period,
+      protocols: {
+        total: Number(prot.total || 0), breached: Number(prot.breached || 0),
+        compliant: Number(prot.compliant || 0), compliance_rate_pct: Number(prot.compliance_rate_pct || 0),
+      },
+      tickets_by_priority: (tickResult.rows || tickResult),
+    });
+  } catch (error) {
+    console.error("Error fetching SLA report:", error);
+    res.status(500).json({ error: "Failed to fetch SLA report" });
+  }
+});
+
+
 // ========== XOS AUTOMATIONS ENGINE ==========
 
 router.get("/automations", async (req: Request, res: Response) => {
