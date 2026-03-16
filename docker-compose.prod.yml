@@ -60,9 +60,23 @@ services:
       LITELLM_API_KEY: ${LITELLM_API_KEY}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       # ── Manus Agent — aponta para LiteLLM como gateway unificado ──────────
-      # LiteLLM roteia para Ollama (local), LLMFit (fine-tuned) ou externo
       AI_INTEGRATIONS_OPENAI_BASE_URL: http://litellm:4000/v1
       AI_INTEGRATIONS_OPENAI_API_KEY: ${LITELLM_API_KEY}
+      # ── Arcádia Plus (Laravel) ─────────────────────────────────────────────
+      PLUS_HOST: plus
+      PLUS_PORT: "8080"
+      PLUS_AUTO_START: "false"   # container separado em prod
+      SSO_PLUS_BASE_URL: http://plus:8080
+      # ── Apache Superset ───────────────────────────────────────────────────
+      SUPERSET_HOST: superset
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      # ── ERPNext ───────────────────────────────────────────────────────────
+      ERPNEXT_PROXY_ENABLED: ${ERPNEXT_PROXY_ENABLED:-false}
+      ERPNEXT_CONTAINER_HOST: erpnext
+      ERPNEXT_URL: ${ERPNEXT_URL:-http://erpnext:8080}
+      ERPNEXT_API_KEY: ${ERPNEXT_API_KEY:-}
+      ERPNEXT_API_SECRET: ${ERPNEXT_API_SECRET:-}
     ports:
       - "5000:5000"
     depends_on:
@@ -78,6 +92,136 @@ services:
       - "traefik.http.routers.arcadia.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.arcadia.tls=true"
       - "traefik.http.routers.arcadia.tls.certresolver=letsencrypt"
+
+  # ── Arcádia Plus (Laravel + MySQL) ──────────────────────────────────────────
+  # Perfil `plus` — suba com: docker compose --profile plus up
+  plus-db:
+    image: mysql:8.0
+    restart: always
+    profiles: [plus]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${PLUS_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${PLUS_DB_DATABASE:-arcadia_plus}
+      MYSQL_USER: ${PLUS_DB_USER:-plus}
+      MYSQL_PASSWORD: ${PLUS_DB_PASSWORD}
+    volumes:
+      - plus_db:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${PLUS_DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - arcadia-internal
+
+  plus:
+    image: ${PLUS_IMAGE:-php:8.3-apache}
+    restart: always
+    profiles: [plus]
+    environment:
+      APP_ENV: production
+      APP_KEY: ${PLUS_APP_KEY}
+      APP_URL: https://${DOMAIN}/plus
+      DB_HOST: plus-db
+      DB_DATABASE: ${PLUS_DB_DATABASE:-arcadia_plus}
+      DB_USERNAME: ${PLUS_DB_USER:-plus}
+      DB_PASSWORD: ${PLUS_DB_PASSWORD}
+      SESSION_DRIVER: redis
+      REDIS_HOST: redis
+      ARCADIA_URL: https://${DOMAIN}
+      ARCADIA_SSO_SECRET: ${SSO_SECRET}
+    volumes:
+      - plus_storage:/var/www/html/storage
+    depends_on:
+      plus-db:
+        condition: service_healthy
+    networks:
+      - arcadia-internal
+
+  # ── Apache Superset (BI) ─────────────────────────────────────────────────────
+  # Perfil `bi` — suba com: docker compose --profile bi up
+  superset:
+    image: apache/superset:4.1.0
+    restart: always
+    profiles: [bi]
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/arcadia_superset
+      ARCADIA_DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@arcadia.app}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      SUPERSET_WEBSERVER_PORT: "8088"
+      PYTHONPATH: /app/pythonpath
+    volumes:
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./docker/superset/init.sh:/app/docker/init.sh:ro
+      - superset_home:/app/superset_home
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["/bin/bash", "/app/docker/init.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - arcadia-internal
+
+  # ── ERPNext (Frappe Framework) ───────────────────────────────────────────────
+  # Perfil `erpnext` — suba com: docker compose --profile erpnext up
+  erpnext-db:
+    image: mariadb:10.6
+    restart: always
+    profiles: [erpnext]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${ERPNEXT_DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: _frappe
+      MYSQL_USER: frappe
+      MYSQL_PASSWORD: ${ERPNEXT_DB_PASSWORD}
+    volumes:
+      - erpnext_db:/var/lib/mysql
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --skip-character-set-client-handshake
+      --skip-innodb-read-only-compressed
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=${ERPNEXT_DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - arcadia-internal
+
+  erpnext:
+    image: frappe/erpnext:version-15
+    restart: always
+    profiles: [erpnext]
+    environment:
+      FRAPPE_SITE_NAME_HEADER: erpnext.local
+      ERPNEXT_DB_ROOT_PASSWORD: ${ERPNEXT_DB_ROOT_PASSWORD}
+      ERPNEXT_ADMIN_PASSWORD: ${ERPNEXT_ADMIN_PASSWORD}
+    volumes:
+      - erpnext_sites:/home/frappe/frappe-bench/sites
+      - erpnext_logs:/home/frappe/frappe-bench/logs
+      - ./docker/erpnext/init.sh:/usr/local/bin/init-erpnext.sh:ro
+    depends_on:
+      erpnext-db:
+        condition: service_healthy
+    command: ["/bin/bash", "/usr/local/bin/init-erpnext.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/method/frappe.ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+    networks:
+      - arcadia-internal
 
   # ── Microserviços Python ─────────────────────────────────────────────────────
   contabil:
@@ -235,3 +379,9 @@ volumes:
   redis_data:
   ollama_models:
   open_webui_data:
+  plus_db:
+  plus_storage:
+  superset_home:
+  erpnext_db:
+  erpnext_sites:
+  erpnext_logs:
