@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
-import { 
-  Users, Building2, TrendingUp, MessageSquare, Ticket, Zap, LayoutGrid, 
+import {
+  Users, Building2, TrendingUp, MessageSquare, Ticket, Zap, LayoutGrid,
   ChevronRight, PlusCircle, Filter, Search, Bell, Calendar, Target,
-  BarChart3, DollarSign, Clock, AlertCircle, Phone, Mail, ArrowUpRight
+  BarChart3, DollarSign, Clock, AlertCircle, Phone, Mail, ArrowUpRight,
+  Activity, Hash, Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -97,6 +98,9 @@ export default function XosCentral() {
     { id: "automations", name: "Automações", icon: Zap, href: "/xos/automations", color: "bg-violet-100 text-violet-600", description: "Workflows automáticos" },
     { id: "campaigns", name: "Campanhas", icon: Target, href: "/xos/campaigns", color: "bg-pink-100 text-pink-600", description: "Marketing automation" },
     { id: "sites", name: "Sites", icon: LayoutGrid, href: "/xos/sites", color: "bg-cyan-100 text-cyan-600", description: "Site builder" },
+    { id: "supervisor", name: "Supervisor", icon: Activity, href: "/xos/supervisor", color: "bg-indigo-100 text-indigo-600", description: "Monitor em tempo real" },
+    { id: "reports", name: "Relatórios", icon: BarChart3, href: "/xos/reports", color: "bg-emerald-100 text-emerald-600", description: "CSAT, SLA e KPIs" },
+    { id: "protocols", name: "Protocolos", icon: Hash, href: "/xos/protocols", color: "bg-teal-100 text-teal-600", description: "Rastreamento de atendimentos" },
   ];
 
   const getStatusColor = (status: string) => {
@@ -264,7 +268,7 @@ export default function XosCentral() {
             {/* Modules Grid */}
             <div>
               <h2 className="text-lg font-semibold text-slate-800 mb-4">Módulos XOS</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-4">
                 {modules.map((mod) => (
                   <Link key={mod.id} href={mod.href}>
                     <Card className="hover:shadow-lg transition-all cursor-pointer group" data-testid={`card-module-${mod.id}`}>
