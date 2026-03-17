@@ -1646,4 +1646,143 @@ export async function fireCrmAutomations(eventType: string, payload: Record<stri
   }
 }
 
+// ─── Campaign Segmentation ────────────────────────────────────────────────────
+
+/**
+ * POST /api/xos/campaigns/segment
+ * Returns XOS contacts matching a segmentation query for campaign targeting.
+ * Body: { tenantId?, filters: { type?, leadStatus?, source?, tags?, city?, state?,
+ *   hasPhone?, hasWhatsapp?, hasEmail?, leadScoreMin?, leadScoreMax?, assignedTo? },
+ *   limit?, offset? }
+ */
+router.post("/campaigns/segment", async (req: Request, res: Response) => {
+  try {
+    const { tenantId, filters = {}, limit = 500, offset = 0 } = req.body;
+    const safeLimit = Math.min(Number(limit) || 500, 5000);
+    const safeOffset = Math.max(Number(offset) || 0, 0);
+
+    // Build SQL fragments dynamically
+    const clauses: ReturnType<typeof sql>[] = [sql`1=1`];
+
+    if (tenantId) clauses.push(sql`c.tenant_id = ${tenantId}`);
+    if (filters.type) clauses.push(sql`c.type = ${filters.type}`);
+    if (filters.city) clauses.push(sql`c.city ILIKE ${"%" + filters.city + "%"}`);
+    if (filters.state) clauses.push(sql`c.state ILIKE ${"%" + filters.state + "%"}`);
+    if (filters.assignedTo) clauses.push(sql`c.assigned_to = ${filters.assignedTo}`);
+    if (filters.hasPhone === true) clauses.push(sql`(c.phone IS NOT NULL AND c.phone != '')`);
+    if (filters.hasPhone === false) clauses.push(sql`(c.phone IS NULL OR c.phone = '')`);
+    if (filters.hasWhatsapp === true) clauses.push(sql`(c.whatsapp IS NOT NULL AND c.whatsapp != '')`);
+    if (filters.hasWhatsapp === false) clauses.push(sql`(c.whatsapp IS NULL OR c.whatsapp = '')`);
+    if (filters.hasEmail === true) clauses.push(sql`(c.email IS NOT NULL AND c.email != '')`);
+    if (filters.hasEmail === false) clauses.push(sql`(c.email IS NULL OR c.email = '')`);
+    if (typeof filters.leadScoreMin === "number") clauses.push(sql`c.lead_score >= ${filters.leadScoreMin}`);
+    if (typeof filters.leadScoreMax === "number") clauses.push(sql`c.lead_score <= ${filters.leadScoreMax}`);
+    if (Array.isArray(filters.leadStatus) && filters.leadStatus.length > 0) {
+      clauses.push(sql`c.lead_status = ANY(${filters.leadStatus})`);
+    }
+    if (Array.isArray(filters.source) && filters.source.length > 0) {
+      clauses.push(sql`c.source = ANY(${filters.source})`);
+    }
+    if (Array.isArray(filters.tags) && filters.tags.length > 0) {
+      clauses.push(sql`c.tags @> ${filters.tags}::text[]`);
+    }
+
+    const whereSql = sql.join(clauses, sql` AND `);
+
+    const countResult = await db.execute(sql`SELECT COUNT(*) AS total FROM xos_contacts c WHERE ${whereSql}`);
+    const total = Number(((countResult as any).rows?.[0])?.total ?? 0);
+
+    const dataResult = await db.execute(sql`
+      SELECT c.id, c.name, c.email, c.phone, c.whatsapp, c.type, c.lead_status,
+             c.lead_score, c.source, c.tags, c.city, c.state, c.company,
+             c.assigned_to, c.last_contact_at
+      FROM xos_contacts c
+      WHERE ${whereSql}
+      ORDER BY c.name ASC
+      LIMIT ${safeLimit} OFFSET ${safeOffset}
+    `);
+
+    const contacts = (dataResult as any).rows ?? [];
+    res.json({ total, limit: safeLimit, offset: safeOffset, count: contacts.length, contacts });
+  } catch (error: any) {
+    console.error("Campaign segment error:", error);
+    res.status(500).json({ error: "Failed to query campaign segment" });
+  }
+});
+
+/**
+ * GET /api/xos/campaigns — list campaigns for tenant
+ */
+router.get("/campaigns", async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    const result = await db.execute(sql`
+      SELECT id, name, description, type, status, segment_query, subject,
+             scheduled_at, started_at, completed_at, stats, created_at, updated_at
+      FROM xos_campaigns
+      ${tenantId ? sql`WHERE tenant_id = ${tenantId}` : sql``}
+      ORDER BY created_at DESC
+      LIMIT 100
+    `);
+    res.json((result as any).rows ?? []);
+  } catch (error: any) {
+    console.error("List campaigns error:", error);
+    res.status(500).json({ error: "Failed to list campaigns" });
+  }
+});
+
+/**
+ * POST /api/xos/campaigns — create campaign
+ */
+router.post("/campaigns", async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    const userId = (req as any).user?.id;
+    const { name, description, type, segmentQuery, content, subject, scheduledAt } = req.body;
+    if (!name || !type) return res.status(400).json({ error: "name and type are required" });
+
+    const result = await db.execute(sql`
+      INSERT INTO xos_campaigns (tenant_id, name, description, type, status, segment_query, content, subject, scheduled_at, created_by)
+      VALUES (
+        ${tenantId || null}, ${name}, ${description || null}, ${type}, 'draft',
+        ${segmentQuery ? JSON.stringify(segmentQuery) : null},
+        ${content || null}, ${subject || null}, ${scheduledAt || null}, ${userId || null}
+      )
+      RETURNING *
+    `);
+    res.status(201).json(((result as any).rows ?? [])[0]);
+  } catch (error: any) {
+    console.error("Create campaign error:", error);
+    res.status(500).json({ error: "Failed to create campaign" });
+  }
+});
+
+/**
+ * PATCH /api/xos/campaigns/:id — update campaign
+ */
+router.patch("/campaigns/:id", async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    const { status, name, description, content, subject, scheduledAt, segmentQuery } = req.body;
+    await db.execute(sql`
+      UPDATE xos_campaigns SET
+        status        = COALESCE(${status || null}, status),
+        name          = COALESCE(${name || null}, name),
+        description   = COALESCE(${description || null}, description),
+        content       = COALESCE(${content || null}, content),
+        subject       = COALESCE(${subject || null}, subject),
+        scheduled_at  = COALESCE(${scheduledAt || null}, scheduled_at),
+        segment_query = COALESCE(${segmentQuery ? JSON.stringify(segmentQuery) : null}::jsonb, segment_query),
+        started_at    = CASE WHEN ${status || null} = 'running'                    AND started_at  IS NULL THEN NOW() ELSE started_at  END,
+        completed_at  = CASE WHEN ${status || null} IN ('completed','cancelled')   AND completed_at IS NULL THEN NOW() ELSE completed_at END,
+        updated_at    = NOW()
+      WHERE id = ${id}
+    `);
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error("Update campaign error:", error);
+    res.status(500).json({ error: "Failed to update campaign" });
+  }
+});
+
 export default router;

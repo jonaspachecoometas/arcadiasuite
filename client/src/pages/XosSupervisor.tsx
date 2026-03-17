@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useXosSocket } from "@/hooks/use-xos-socket";
 import { Link } from "wouter";
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
 import {
@@ -71,6 +72,7 @@ export default function XosSupervisor() {
   const [activeTab, setActiveTab] = useState("overview");
   const [queueFilter, setQueueFilter] = useState("all");
   const [autoRefresh] = useState(true);
+  const { connected: socketConnected, supervisorStats: liveStats } = useXosSocket();
 
   const refetchInterval = autoRefresh ? 30000 : false;
 
@@ -143,9 +145,13 @@ export default function XosSupervisor() {
     );
   }
 
+  // Prefer real-time socket stats over polling data when available
   const conv = overview?.conversations;
   const tick = overview?.tickets;
-  const totalActive = (conv?.open || 0) + (conv?.pending || 0);
+  const totalActive = liveStats?.openConversations ?? ((conv?.open || 0) + (conv?.pending || 0));
+  const resolvedToday = liveStats?.resolvedToday ?? conv?.resolved_today ?? 0;
+  const urgentTickets = liveStats?.urgentTickets ?? tick?.urgent_open ?? 0;
+  const agentsOnline = liveStats?.agentsOnline ?? overview?.agents_active?.length ?? 0;
 
   return (
     <BrowserFrame>
@@ -167,7 +173,10 @@ export default function XosSupervisor() {
                   <h1 className="text-xl font-bold text-slate-800">Monitor de Supervisor</h1>
                   <p className="text-xs text-slate-500">
                     Atualizado às {overview ? new Date(overview.generated_at).toLocaleTimeString("pt-BR") : "—"}
-                    {autoRefresh && <span className="ml-2 text-emerald-600">• ao vivo</span>}
+                    {socketConnected
+                      ? <span className="ml-2 text-emerald-600">● tempo real</span>
+                      : autoRefresh && <span className="ml-2 text-yellow-600">○ polling 30s</span>
+                    }
                   </p>
                 </div>
               </div>
@@ -205,6 +214,7 @@ export default function XosSupervisor() {
                 </div>
                 <div className="mt-2 flex items-center gap-2 text-sm text-blue-100">
                   <span>{conv?.unassigned || 0} sem agente</span>
+
                   <span>•</span>
                   <span>{conv?.pending || 0} pendentes</span>
                 </div>
@@ -216,7 +226,7 @@ export default function XosSupervisor() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-emerald-100 text-sm">Resolvidos Hoje</p>
-                    <p className="text-3xl font-bold">{conv?.resolved_today || 0}</p>
+                    <p className="text-3xl font-bold">{resolvedToday}</p>
                   </div>
                   <CheckCircle2 className="h-10 w-10 text-emerald-200" />
                 </div>
@@ -231,7 +241,7 @@ export default function XosSupervisor() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-orange-100 text-sm">Tickets Urgentes</p>
-                    <p className="text-3xl font-bold">{tick?.urgent_open || 0}</p>
+                    <p className="text-3xl font-bold">{urgentTickets}</p>
                   </div>
                   <Ticket className="h-10 w-10 text-orange-200" />
                 </div>
@@ -252,7 +262,7 @@ export default function XosSupervisor() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-violet-100 text-sm">Agentes Ativos</p>
-                    <p className="text-3xl font-bold">{overview?.agents_active?.length || 0}</p>
+                    <p className="text-3xl font-bold">{agentsOnline}</p>
                   </div>
                   <Users className="h-10 w-10 text-violet-200" />
                 </div>
