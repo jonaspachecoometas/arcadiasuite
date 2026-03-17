@@ -234,27 +234,22 @@ services:
 
   # ── Superset BI ───────────────────────────────────────────────────────────────
   superset:
-    image: apache/superset:latest
+    build:
+      context: ./docker/superset
+      dockerfile: Dockerfile
     restart: always
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
-      SQLALCHEMY_DATABASE_URI: postgresql+psycopg2://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/superset
-      SUPERSET_LOAD_EXAMPLES: "no"
+      SQLALCHEMY_DATABASE_URI: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/superset
+      PYTHONPATH: /app/pythonpath
       SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
       SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
       SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@onboardbi.com.br}
-    command: >
-      /bin/sh -c "
-        superset db upgrade &&
-        superset fab create-admin
-          --username \"$$SUPERSET_ADMIN_USERNAME\"
-          --firstname Arcadia --lastname Admin
-          --email \"$$SUPERSET_ADMIN_EMAIL\"
-          --password \"$$SUPERSET_ADMIN_PASSWORD\" || true &&
-        superset init &&
-        gunicorn --bind 0.0.0.0:8088 --workers 2 --timeout 120 'superset.app:create_app()'
-      "
+      ARCADIA_DATABASE_URL: postgresql+psycopg2://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+    command: ["/bin/bash", "/app/docker/init.sh"]
     volumes:
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./docker/superset/init.sh:/app/docker/init.sh:ro
       - superset_home:/app/superset_home
     depends_on:
       db:
