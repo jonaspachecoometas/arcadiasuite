@@ -49,6 +49,8 @@ import governanceRoutes from "./governance/routes";
 import { setupPlusProxy } from "./plus/proxy";
 import { setupSupersetProxy } from "./superset/proxy";
 import { registerSupersetRoutes } from "./superset/routes";
+import { setupErpNextProxy } from "./erpnext/proxy";
+import { importErpNextRulesForTenant } from "./soe/erpnext-rule-importer";
 import { registerEngineRoomRoutes } from "./engine-room/routes";
 import plusSsoRoutes from "./plus/sso";
 import migrationRoutes from "./migration/routes";
@@ -75,6 +77,9 @@ export async function registerRoutes(
   // Apache Superset - Arcádia Insights (substitui Metabase)
   setupSupersetProxy(app);
   registerSupersetRoutes(app);
+
+  // ERPNext container proxy (ativo apenas em DOCKER_MODE ou ERPNEXT_PROXY_ENABLED=true)
+  setupErpNextProxy(app);
   
   registerChatRoutes(app);
   registerSoeRoutes(app);
@@ -112,6 +117,17 @@ export async function registerRoutes(
   registerCommunityRoutes(app);
   app.use("/api/para", paraRoutes);
   app.use("/api/erpnext", erpnextRoutes);
+
+  // SOE — Importar regras do ERPNext para soe_regras
+  app.post("/api/soe/erpnext/import-rules", async (req: any, res) => {
+    try {
+      const tenantId = req.user?.tenantId || req.body?.tenantId;
+      const result = await importErpNextRulesForTenant(tenantId);
+      res.json({ ok: true, ...result });
+    } catch (e: any) {
+      res.status(500).json({ ok: false, error: e.message });
+    }
+  });
   app.use("/api/quality", qualityRoutes);
   app.use("/api/lowcode", lowcodeRoutes);
   app.use("/api/dev-agent", devAgentRoutes);
