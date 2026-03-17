@@ -1,5 +1,5 @@
-import { Switch, Route } from "wouter";
-import { lazy, Suspense } from "react";
+import { Switch, Route, useLocation } from "wouter";
+import { lazy, Suspense, useEffect } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -124,7 +124,7 @@ function Router() {
       <ProtectedRoute path="/engineering" component={EngineeringHub} />
       <ProtectedRoute path="/development" component={DevelopmentModule} />
       <ProtectedRoute path="/retail" component={ArcadiaRetail} />
-      <ProtectedRoute path="/plus" component={Plus} />
+      <ProtectedRoute path="/plus" component={() => { const [, nav] = useLocation(); useEffect(() => nav("/soe"), []); return null; }} />
       <ProtectedRoute path="/super-admin" component={SuperAdmin} />
       <ProtectedRoute path="/marketplace" component={Marketplace} />
       <ProtectedRoute path="/lms" component={LMS} />

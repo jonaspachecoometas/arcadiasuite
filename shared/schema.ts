@@ -7362,3 +7362,70 @@ export const commEvents = pgTable("comm_events", {
   processedByAgents: boolean("processed_by_agents").default(false), // consumed by agents?
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SOE — Sistema Operacional Empresarial (Rule Engine + Event Bus)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Regras do SOE — configuráveis por tenant/empresa
+export const soeRegras = pgTable("soe_regras", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  empresaId: integer("empresa_id"),
+  dominio: varchar("dominio", { length: 50 }).notNull(), // 'fiscal' | 'business' | 'accounting' | 'financial'
+  trigger: varchar("trigger", { length: 100 }).notNull(), // 'pre_sales_order' | 'pre_nfe_emissao' | etc.
+  nome: varchar("nome", { length: 200 }).notNull(),
+  condicao: jsonb("condicao").notNull().$type<Record<string, any>>(),
+  acao: jsonb("acao").notNull().$type<Record<string, any>>(),
+  prioridade: integer("prioridade").default(10),
+  ativo: boolean("ativo").default(true),
+  origemPadrao: boolean("origem_padrao").default(false), // true = regra padrão do sistema
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// Log de todos os eventos SOE (audit trail completo)
+export const soeEventos = pgTable("soe_eventos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  empresaId: integer("empresa_id"),
+  evento: varchar("evento", { length: 100 }).notNull(), // 'nfe_emitida' | 'venda_confirmada' | etc.
+  motorOrigem: varchar("motor_origem", { length: 50 }), // 'plus' | 'erpnext' | 'local'
+  regraIds: jsonb("regra_ids").$type<string[]>(),         // IDs das regras aplicadas
+  payloadEntrada: jsonb("payload_entrada").$type<Record<string, any>>(),
+  payloadSaida: jsonb("payload_saida").$type<Record<string, any>>(),
+  status: varchar("status", { length: 50 }).notNull().default("ok"), // 'ok' | 'error' | 'skipped'
+  duracaoMs: integer("duracao_ms"),
+  erro: text("erro"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// Lançamentos contábeis automáticos gerados pelo SOE Event Bus
+export const soeLancamentos = pgTable("soe_lancamentos", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  empresaId: integer("empresa_id").notNull(),
+  data: date("data").notNull(),
+  contaDebito: varchar("conta_debito", { length: 30 }).notNull(),
+  contaCredito: varchar("conta_credito", { length: 30 }).notNull(),
+  valor: numeric("valor", { precision: 15, scale: 2 }).notNull(),
+  historico: text("historico").notNull(),
+  origemEvento: varchar("origem_evento", { length: 100 }), // 'nfe_emitida' | 'pagamento_realizado' | etc.
+  origemEventoId: uuid("origem_evento_id").references(() => soeEventos.id),
+  periodo: varchar("periodo", { length: 7 }), // '2026-03'
+  enviado8003: boolean("enviado_8003").default(false), // sincronizado com Motor Contábil Python
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+// Insert schemas
+export const insertSoeRegraSchema = createInsertSchema(soeRegras);
+export const insertSoeEventoSchema = createInsertSchema(soeEventos);
+export const insertSoeLancamentoSchema = createInsertSchema(soeLancamentos);
+
+// Types
+export type SoeRegra = typeof soeRegras.$inferSelect;
+export type InsertSoeRegra = z.infer<typeof insertSoeRegraSchema>;
+export type SoeEvento = typeof soeEventos.$inferSelect;
+export type InsertSoeEvento = z.infer<typeof insertSoeEventoSchema>;
+export type SoeLancamento = typeof soeLancamentos.$inferSelect;
+export type InsertSoeLancamento = z.infer<typeof insertSoeLancamentoSchema>;

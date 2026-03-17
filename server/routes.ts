@@ -47,11 +47,9 @@ import lmsRoutes from "./lms/routes";
 import xosRoutes from "./xos/routes";
 import governanceRoutes from "./governance/routes";
 import { setupPlusProxy } from "./plus/proxy";
-import { setupMetabaseProxy } from "./metabase/proxy";
 import { setupSupersetProxy } from "./superset/proxy";
 import { registerSupersetRoutes } from "./superset/routes";
 import { registerEngineRoomRoutes } from "./engine-room/routes";
-import { registerMetaSetRoutes } from "./metaset/routes";
 import plusSsoRoutes from "./plus/sso";
 import migrationRoutes from "./migration/routes";
 import { githubRoutes } from "./integrations/github";
@@ -73,11 +71,10 @@ export async function registerRoutes(
   
   // Arcádia Plus - Proxy registered AFTER session but BEFORE auth-protected routes
   await setupPlusProxy(app);
-  
-  // Superset BI - Proxy
+
+  // Apache Superset - Arcádia Insights (substitui Metabase)
   setupSupersetProxy(app);
-  // Metabase BI - Proxy to Metabase instance
-  setupMetabaseProxy(app);
+  registerSupersetRoutes(app);
   
   registerChatRoutes(app);
   registerSoeRoutes(app);
@@ -94,8 +91,6 @@ export async function registerRoutes(
   registerBiRoutes(app);
   app.use("/api/graph", graphRoutes);
   registerBiEngineRoutes(app);
-  registerMetaSetRoutes(app);
-  registerSupersetRoutes(app);
   registerCommEngineRoutes(app);
   registerLearningRoutes(app);
   app.use("/api/compass", compassRoutes);

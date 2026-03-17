@@ -167,12 +167,32 @@ services:
     restart: unless-stopped
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-superset-secret-change-in-prod}
-      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia_superset
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD:-arcadia123}@db:5432/arcadia_superset
+      ARCADIA_DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD:-arcadia123}@db:5432/arcadia
+      SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@arcadia.app}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-arcadia2026}
+      SUPERSET_WEBSERVER_PORT: 8088
+      PYTHONPATH: /app/pythonpath
+      FLASK_ENV: production
     ports:
       - "8088:8088"
+    volumes:
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./docker/superset/init.sh:/app/docker/init.sh:ro
+      - superset_home:/app/superset_home
     depends_on:
       db:
         condition: service_healthy
+    command: ["/bin/bash", "/app/docker/init.sh"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - arcadia
     profiles: [bi]
 
   # ─────────────── PERFIL: ai (Soberania de IA) ────────────────────────────────
@@ -231,3 +251,8 @@ volumes:
   pgdata:
   ollama_models:
   open_webui_data:
+  superset_home:
+
+networks:
+  arcadia:
+    driver: bridge

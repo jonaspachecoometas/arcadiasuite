@@ -4,6 +4,8 @@ import { db } from "../../db/index";
 import { customers, suppliers, products, salesOrders, purchaseOrders, erpSegments, erpConfig, insertErpSegmentSchema, insertErpConfigSchema, persons, personRoles, mobileDevices, posSales, posSaleItems, finAccountsReceivable } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
+import { soeRuleEngine } from "../soe/rule-engine/index";
+import { soeEventBus } from "../soe/event-bus";
 
 export function registerErpRoutes(app: Express): void {
   app.get("/api/erp/connections", async (req: Request, res: Response) => {
@@ -850,12 +852,24 @@ export function registerErpRoutes(app: Express): void {
         return res.status(401).json({ error: "Not authenticated" });
       }
       const tenantId = req.user?.tenantId || 1;
-      const { orderNumber, customerId, orderDate, deliveryDate, status, subtotal, discount, tax, total, paymentMethod, notes } = req.body;
+      const user = req.user as any;
+
+      // SOE Rule Engine — aplica regras fiscais e de negócio antes de criar o pedido
+      const { payload: enriched, validationErrors } = await soeRuleEngine.apply(
+        "pre_sales_order",
+        { ...req.body, _tipo: "venda" },
+        { tenantId, empresaId: req.body.empresaId, userId: user?.id, motor: "local" }
+      );
+      if (validationErrors.length > 0) {
+        return res.status(422).json({ error: "Validação falhou", details: validationErrors });
+      }
+
+      const { orderNumber, customerId, orderDate, deliveryDate, status, subtotal, discount, tax, total, paymentMethod, notes } = enriched;
       const [order] = await db.insert(salesOrders).values({
         tenantId,
         orderNumber, customerId, orderDate, deliveryDate, status, subtotal, discount, tax, total, paymentMethod, notes
       }).returning();
-      res.status(201).json(order);
+      res.status(201).json({ ...order, _rulesApplied: enriched._rulesApplied });
     } catch (error) {
       console.error("Error creating sales order:", error);
       res.status(500).json({ error: "Failed to create sales order" });
@@ -876,7 +890,16 @@ export function registerErpRoutes(app: Express): void {
       if (!updated) {
         return res.status(404).json({ error: "Sales order not found" });
       }
-      res.json({ success: true, order: updated, message: "Pedido confirmado. Lançamentos contábeis gerados." });
+
+      // SOE Event Bus — dispara automações pós-confirmação
+      soeEventBus.emit("venda_confirmada", {
+        tenantId,
+        empresaId: (req.user as any)?.empresaId,
+        motorOrigem: "local",
+        dados: { id, status: "confirmed", ...updated },
+      }).catch((e) => console.error("[SOE] venda_confirmada error:", e.message));
+
+      res.json({ success: true, order: updated, message: "Pedido confirmado. Automações SOE disparadas." });
     } catch (error) {
       console.error("Error confirming sales order:", error);
       res.status(500).json({ error: "Failed to confirm sales order" });
@@ -890,6 +913,18 @@ export function registerErpRoutes(app: Express): void {
       }
       const id = parseInt(req.params.id);
       const tenantId = req.user?.tenantId || 1;
+      const user = req.user as any;
+
+      // SOE Rule Engine — aplica regras fiscais antes de gerar a NF-e
+      const { payload: enriched, validationErrors } = await soeRuleEngine.apply(
+        "pre_nfe_emissao",
+        { ...req.body, tipoDocumento: "nfe", _tipo: "venda" },
+        { tenantId, empresaId: user?.empresaId, userId: user?.id, motor: "local" }
+      );
+      if (validationErrors.length > 0) {
+        return res.status(422).json({ error: "Validação fiscal falhou", details: validationErrors });
+      }
+
       const [updated] = await db.update(salesOrders)
         .set({ status: "invoiced" })
         .where(and(eq(salesOrders.id, id), eq(salesOrders.tenantId, tenantId)))
@@ -897,7 +932,26 @@ export function registerErpRoutes(app: Express): void {
       if (!updated) {
         return res.status(404).json({ error: "Sales order not found" });
       }
-      res.json({ success: true, order: updated, message: "NF-e gerada com sucesso." });
+
+      // SOE Event Bus — dispara lançamentos contábeis automáticos
+      soeEventBus.emit("nfe_emitida", {
+        tenantId,
+        empresaId: user?.empresaId,
+        motorOrigem: "local",
+        dados: {
+          ...enriched,
+          ...updated,
+          valorTotal: updated.total,
+          dataEmissao: new Date().toISOString(),
+        },
+      }).catch((e) => console.error("[SOE] nfe_emitida error:", e.message));
+
+      res.json({
+        success: true,
+        order: updated,
+        tributacao: enriched.tributacao,
+        message: "NF-e gerada. Lançamentos contábeis sendo processados.",
+      });
     } catch (error) {
       console.error("Error generating NF-e:", error);
       res.status(500).json({ error: "Failed to generate NF-e" });
