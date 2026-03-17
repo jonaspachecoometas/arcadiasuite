@@ -7145,6 +7145,8 @@ export const xosSlaPolicies = pgTable("xos_sla_policies", {
 export const insertXosSlaPolicySchema = createInsertSchema(xosSlaPolicies).omit({ id: true, createdAt: true, updatedAt: true });
 export type XosSlaPolicy = typeof xosSlaPolicies.$inferSelect;
 export type InsertXosSlaPolicy = z.infer<typeof insertXosSlaPolicySchema>;
+
+export const xosDevPipelines = pgTable("xos_dev_pipelines", {
   id: serial("id").primaryKey(),
   correlationId: text("correlation_id").notNull().default(sql`gen_random_uuid()`),
   prompt: text("prompt").notNull(),

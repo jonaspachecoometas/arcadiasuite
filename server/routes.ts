@@ -61,6 +61,8 @@ import pipelineRoutes from "./blackboard/pipelineRoutes";
 import { startAllAgents } from "./blackboard/agents";
 import { loadModuleRoutes } from "./modules/loader";
 import graphRoutes from "./graph/routes";
+import { initSocketIO } from "./socket-io";
+import { startXosScheduler } from "./xos/scheduler";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -80,6 +82,8 @@ export async function registerRoutes(
   registerChatRoutes(app);
   registerSoeRoutes(app);
   registerInternalChatRoutes(app);
+  // Initialize shared Socket.IO singleton (must be before other socket setups)
+  initSocketIO(httpServer);
   setupChatSocket(httpServer);
   setupCommunitySocket(httpServer);
   registerWhatsappRoutes(app);
@@ -133,6 +137,9 @@ export async function registerRoutes(
   
   // Iniciar os 6 agentes do Blackboard
   startAllAgents();
+
+  // XOS Scheduler: SLA breach checker + supervisor stats broadcaster
+  startXosScheduler();
   
   // Central de Protocolos (MCP, A2A, AP2, UCP)
   app.use("/api", protocolsRoutes);

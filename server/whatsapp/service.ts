@@ -26,6 +26,8 @@ interface AutoReplyConfig {
   outsideHoursMessage: string;
   aiEnabled: boolean;
   maxAutoRepliesPerContact: number;
+  /** Optional: link to an XOS queue for schedule/out-of-hours config */
+  xosQueueId?: number;
 }
 
 interface WhatsAppSession {
@@ -130,6 +132,31 @@ Nome do cliente: ${contactName}`;
     }
   }
 
+  /** Check XOS queue schedule. Returns { isOpen, outOfHoursMessage }. */
+  private async checkXosQueueIsOpen(queueId: number): Promise<{ isOpen: boolean; outOfHoursMessage: string | null }> {
+    try {
+      const result = await db.execute(sql`
+        SELECT schedules, out_of_hours_message FROM xos_queues WHERE id = ${queueId}
+      `);
+      const queue = ((result as any).rows ?? [])[0];
+      if (!queue) return { isOpen: true, outOfHoursMessage: null };
+
+      const schedules: Array<{ dayOfWeek: number; startTime: string; endTime: string; enabled: boolean }> = queue.schedules || [];
+      if (!schedules.length) return { isOpen: true, outOfHoursMessage: null };
+
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
+      const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const todaySchedule = schedules.find((s) => s.dayOfWeek === dayOfWeek && s.enabled !== false);
+
+      if (!todaySchedule) return { isOpen: false, outOfHoursMessage: queue.out_of_hours_message };
+      const isOpen = currentTime >= todaySchedule.startTime && currentTime < todaySchedule.endTime;
+      return { isOpen, outOfHoursMessage: isOpen ? null : queue.out_of_hours_message };
+    } catch {
+      return { isOpen: true, outOfHoursMessage: null }; // fail-open: don't block messages if DB query fails
+    }
+  }
+
   private async processAutoReply(msg: IncomingMessage, contact: typeof whatsappContacts.$inferSelect): Promise<void> {
     try {
       const config = this.getAutoReplyConfig(msg.userId);
@@ -137,18 +164,29 @@ Nome do cliente: ${contactName}`;
 
       const contactKey = `${msg.userId}_${contact.id}`;
       const currentCount = this.autoReplyCount.get(contactKey) || 0;
-      
+
       if (currentCount >= config.maxAutoRepliesPerContact) {
         return;
       }
 
-      const currentHour = new Date().getHours();
-      const isBusinessHours = currentHour >= config.businessHours.start && currentHour < config.businessHours.end;
+      // Check business hours — prefer XOS queue schedule when configured
+      let isBusinessHours: boolean;
+      let outsideHoursReply: string;
+
+      if (config.xosQueueId) {
+        const { isOpen, outOfHoursMessage } = await this.checkXosQueueIsOpen(config.xosQueueId);
+        isBusinessHours = isOpen;
+        outsideHoursReply = outOfHoursMessage || config.outsideHoursMessage;
+      } else {
+        const currentHour = new Date().getHours();
+        isBusinessHours = currentHour >= config.businessHours.start && currentHour < config.businessHours.end;
+        outsideHoursReply = config.outsideHoursMessage;
+      }
 
       let replyText: string;
 
       if (!isBusinessHours) {
-        replyText = config.outsideHoursMessage;
+        replyText = outsideHoursReply;
       } else if (currentCount === 0) {
         replyText = config.welcomeMessage;
       } else if (config.aiEnabled) {
