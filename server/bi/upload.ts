@@ -2,15 +2,15 @@ import type { Express, Request, Response } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createRequire } from "module";
+
 import AdmZip from "adm-zip";
 import * as BSON from "bson";
 import { db } from "../../db/index";
 import { biDatasets, stagedTables } from "@shared/schema";
 import { sql } from "drizzle-orm";
 
-const require = createRequire(import.meta.url);
-const XLSX = require("xlsx");
+
+import * as XLSX from "xlsx";
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
