@@ -7099,6 +7099,53 @@ export const insertAgentMetricsSchema = createInsertSchema(xosAgentMetrics).omit
 export type XosAgentMetric = typeof xosAgentMetrics.$inferSelect;
 export type InsertXosAgentMetric = z.infer<typeof insertAgentMetricsSchema>;
 
+// ── Protocolos de Atendimento ────────────────────────────────────────────────
+export const xosProtocols = pgTable("xos_protocols", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  protocolNumber: varchar("protocol_number", { length: 30 }).notNull().unique(),
+  conversationId: integer("conversation_id").references(() => xosConversations.id, { onDelete: "set null" }),
+  ticketId: integer("ticket_id").references(() => xosTickets.id, { onDelete: "set null" }),
+  contactId: integer("contact_id").references(() => xosContacts.id, { onDelete: "set null" }),
+  queueId: integer("queue_id").references(() => xosQueues.id, { onDelete: "set null" }),
+  assignedTo: varchar("assigned_to").references(() => users.id, { onDelete: "set null" }),
+  subject: text("subject"),
+  status: varchar("status", { length: 30 }).default("open"), // open, resolved, cancelled
+  openedAt: timestamp("opened_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  slaDeadline: timestamp("sla_deadline"),
+  slaBreach: boolean("sla_breach").default(false),
+  satisfactionScore: integer("satisfaction_score"), // 1-5
+  satisfactionComment: text("satisfaction_comment"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertXosProtocolSchema = createInsertSchema(xosProtocols).omit({ id: true, createdAt: true, updatedAt: true });
+export type XosProtocol = typeof xosProtocols.$inferSelect;
+export type InsertXosProtocol = z.infer<typeof insertXosProtocolSchema>;
+
+// ── Políticas de SLA ─────────────────────────────────────────────────────────
+export const xosSlaPolicies = pgTable("xos_sla_policies", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  queueId: integer("queue_id").references(() => xosQueues.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  priority: varchar("priority", { length: 20 }).default("normal"), // low, normal, high, urgent
+  firstResponseMinutes: integer("first_response_minutes").default(60),
+  resolutionMinutes: integer("resolution_minutes").default(480),
+  escalationAgentId: varchar("escalation_agent_id").references(() => users.id, { onDelete: "set null" }),
+  notifyOnBreach: boolean("notify_on_breach").default(true),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertXosSlaPolicySchema = createInsertSchema(xosSlaPolicies).omit({ id: true, createdAt: true, updatedAt: true });
+export type XosSlaPolicy = typeof xosSlaPolicies.$inferSelect;
+export type InsertXosSlaPolicy = z.infer<typeof insertXosSlaPolicySchema>;
+
 export const xosDevPipelines = pgTable("xos_dev_pipelines", {
   id: serial("id").primaryKey(),
   correlationId: text("correlation_id").notNull().default(sql`gen_random_uuid()`),

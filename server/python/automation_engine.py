@@ -67,6 +67,34 @@ class WorkflowStepType(str, Enum):
     HTTP_REQUEST = "http"
     TRANSFORM = "transform"
     NOTIFY = "notify"
+    SUB_WORKFLOW = "sub_workflow"
+    SPLIT_BATCH = "split_batch"
+    MERGE = "merge"
+    ERROR_HANDLER = "error_handler"
+    RETRY = "retry"
+    SEND_EMAIL = "send_email"
+    SEND_WHATSAPP = "send_whatsapp"
+    UPDATE_RECORD = "update_record"
+    CREATE_RECORD = "create_record"
+    MANUS_TASK = "manus_task"
+
+
+class CrmEventType(str, Enum):
+    CONTACT_CREATED = "crm.contact.created"
+    CONTACT_UPDATED = "crm.contact.updated"
+    DEAL_CREATED = "crm.deal.created"
+    DEAL_STAGE_CHANGED = "crm.deal.stage_changed"
+    DEAL_WON = "crm.deal.won"
+    DEAL_LOST = "crm.deal.lost"
+    TICKET_CREATED = "crm.ticket.created"
+    TICKET_RESOLVED = "crm.ticket.resolved"
+    FORM_SUBMITTED = "crm.form.submitted"
+    MESSAGE_RECEIVED = "crm.message.received"
+    CONVERSATION_CLOSED = "crm.conversation.closed"
+    CAMPAIGN_SENT = "crm.campaign.sent"
+    CSAT_RECEIVED = "crm.csat.received"
+    SLA_BREACHED = "crm.sla.breached"
+    PROTOCOL_CREATED = "crm.protocol.created"
 
 
 class CronExpression:
@@ -254,6 +282,9 @@ class WorkflowStep(BaseModel):
     config: Dict = {}
     on_success: Optional[str] = None
     on_failure: Optional[str] = None
+    retry_count: int = 0
+    retry_delay_seconds: int = 5
+    error_branch: Optional[str] = None
 
 
 class WorkflowDefinition(BaseModel):
@@ -262,12 +293,20 @@ class WorkflowDefinition(BaseModel):
     steps: List[WorkflowStep]
     trigger: Optional[str] = None
     variables: Optional[Dict] = None
+    error_handler: Optional[str] = None
+    max_execution_time: int = 300
 
 
 class WorkflowExecution(BaseModel):
     workflow_id: str
     trigger_data: Optional[Dict] = None
     variables: Optional[Dict] = None
+
+
+class XosAutomationTrigger(BaseModel):
+    event_type: str
+    tenant_id: Optional[int] = None
+    payload: Dict = {}
 
 
 class WorkflowExecutor:
@@ -308,20 +347,40 @@ class WorkflowExecutor:
             "variables": {**(workflow.variables or {}), **(variables or {}), **(trigger_data or {})},
         }
 
+        # Build step index for branching
+        step_map = {s.id: s for s in workflow.steps}
+        step_queue = list(workflow.steps)
+
         try:
-            for i, step in enumerate(workflow.steps):
-                step_result = self._execute_step(step, execution["variables"])
+            i = 0
+            while i < len(step_queue):
+                step = step_queue[i]
+                step_result, step_status = self._execute_step_with_retry(step, execution["variables"])
+
                 execution["results"].append({
                     "step_id": step.id,
                     "type": step.type,
-                    "status": "completed",
+                    "status": step_status,
                     "result": step_result,
                     "executed_at": datetime.now().isoformat(),
                 })
-                execution["steps_completed"] = i + 1
+                execution["steps_completed"] += 1
 
                 if isinstance(step_result, dict):
                     execution["variables"].update(step_result.get("output", {}))
+
+                # Handle branching on condition results
+                if step_status == "error" and step.error_branch and step.error_branch in step_map:
+                    # Jump to error branch
+                    step_queue = step_queue[:i+1] + [step_map[step.error_branch]] + step_queue[i+1:]
+                elif step.type == WorkflowStepType.CONDITION:
+                    condition_result = step_result.get("result", False) if isinstance(step_result, dict) else False
+                    next_id = step.on_success if condition_result else step.on_failure
+                    if next_id and next_id in step_map:
+                        # Insert branch step next
+                        step_queue = step_queue[:i+1] + [step_map[next_id]] + step_queue[i+1:]
+
+                i += 1
 
             execution["status"] = "completed"
             execution["completed_at"] = datetime.now().isoformat()
@@ -336,25 +395,61 @@ class WorkflowExecutor:
 
         return execution
 
+    def _execute_step_with_retry(self, step: WorkflowStep, variables: Dict):
+        """Execute step with retry logic. Returns (result, status)."""
+        max_attempts = max(1, step.retry_count + 1)
+        last_error = None
+        for attempt in range(max_attempts):
+            try:
+                result = self._execute_step(step, variables)
+                if isinstance(result, dict) and "error" in result and max_attempts > 1:
+                    last_error = result["error"]
+                    if attempt < max_attempts - 1:
+                        time.sleep(min(step.retry_delay_seconds * (attempt + 1), 60))
+                    continue
+                return result, "completed"
+            except Exception as e:
+                last_error = str(e)
+                if attempt < max_attempts - 1:
+                    time.sleep(min(step.retry_delay_seconds * (attempt + 1), 60))
+        return {"error": last_error, "attempts": max_attempts}, "error"
+
     def _execute_step(self, step: WorkflowStep, variables: Dict) -> Any:
-        if step.type == WorkflowStepType.CONDITION:
+        stype = step.type
+        if stype == WorkflowStepType.CONDITION:
             return self._exec_condition(step.config, variables)
-        elif step.type == WorkflowStepType.ACTION:
+        elif stype == WorkflowStepType.ACTION:
             return self._exec_action(step.config, variables)
-        elif step.type == WorkflowStepType.DELAY:
+        elif stype == WorkflowStepType.DELAY:
             delay_seconds = step.config.get("seconds", 1)
-            time.sleep(min(delay_seconds, 30))
+            time.sleep(min(delay_seconds, 300))
             return {"delayed": delay_seconds}
-        elif step.type == WorkflowStepType.SQL_QUERY:
+        elif stype == WorkflowStepType.SQL_QUERY:
             return self._exec_query(step.config, variables)
-        elif step.type == WorkflowStepType.HTTP_REQUEST:
+        elif stype == WorkflowStepType.HTTP_REQUEST:
             return self._exec_http(step.config, variables)
-        elif step.type == WorkflowStepType.TRANSFORM:
+        elif stype == WorkflowStepType.TRANSFORM:
             return self._exec_transform(step.config, variables)
-        elif step.type == WorkflowStepType.NOTIFY:
-            return {"notified": True, "message": step.config.get("message", ""), "channel": step.config.get("channel", "system")}
+        elif stype == WorkflowStepType.NOTIFY:
+            return self._exec_notify(step.config, variables)
+        elif stype == WorkflowStepType.SUB_WORKFLOW:
+            return self._exec_sub_workflow(step.config, variables)
+        elif stype == WorkflowStepType.SPLIT_BATCH:
+            return self._exec_split_batch(step.config, variables)
+        elif stype == WorkflowStepType.SEND_EMAIL:
+            return self._exec_send_email(step.config, variables)
+        elif stype == WorkflowStepType.SEND_WHATSAPP:
+            return self._exec_send_whatsapp(step.config, variables)
+        elif stype == WorkflowStepType.UPDATE_RECORD:
+            return self._exec_update_record(step.config, variables)
+        elif stype == WorkflowStepType.CREATE_RECORD:
+            return self._exec_create_record(step.config, variables)
+        elif stype == WorkflowStepType.MANUS_TASK:
+            return self._exec_manus_task(step.config, variables)
+        elif stype == WorkflowStepType.LOOP:
+            return self._exec_loop(step.config, variables)
         else:
-            return {"type": step.type, "status": "unknown_step_type"}
+            return {"type": stype, "status": "executed"}
 
     def _exec_condition(self, config: Dict, variables: Dict) -> Dict:
         field = config.get("field", "")
@@ -443,7 +538,145 @@ class WorkflowExecutor:
             value = config.get("value")
             filtered = [item for item in data if isinstance(item, dict) and item.get(field) == value]
             return {"output": {"filtered": filtered}}
+        elif operation == "map" and isinstance(data, list):
+            field = config.get("field", "")
+            mapped = [item.get(field) for item in data if isinstance(item, dict)]
+            return {"output": {"mapped": mapped}}
+        elif operation == "sort" and isinstance(data, list):
+            field = config.get("field", "")
+            reverse = config.get("reverse", False)
+            sorted_data = sorted(data, key=lambda x: x.get(field, 0) if isinstance(x, dict) else 0, reverse=reverse)
+            return {"output": {"sorted": sorted_data}}
+        elif operation == "unique" and isinstance(data, list):
+            field = config.get("field", "")
+            seen = set()
+            unique = []
+            for item in data:
+                key = item.get(field) if isinstance(item, dict) else item
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(item)
+            return {"output": {"unique": unique}}
         return {"output": {}}
+
+    def _exec_notify(self, config: Dict, variables: Dict) -> Dict:
+        message = self._interpolate(config.get("message", ""), variables)
+        channel = config.get("channel", "system")
+        # Emit as system event so Node.js can handle delivery
+        event_bus.emit("system.notification", {
+            "message": message,
+            "channel": channel,
+            "title": config.get("title", "Automação"),
+            "level": config.get("level", "info"),
+        })
+        return {"notified": True, "message": message, "channel": channel}
+
+    def _exec_sub_workflow(self, config: Dict, variables: Dict) -> Dict:
+        sub_id = config.get("workflow_id", "")
+        if not sub_id or sub_id not in self._workflows:
+            return {"error": f"Sub-workflow '{sub_id}' nao encontrado"}
+        # Pass current variables merged with config overrides
+        sub_vars = {**variables, **config.get("variables", {})}
+        result = self.execute(sub_id, variables=sub_vars)
+        return {"output": {"sub_workflow_result": result.get("status"), "sub_workflow_vars": result.get("variables", {})}}
+
+    def _exec_split_batch(self, config: Dict, variables: Dict) -> Dict:
+        source = config.get("source", "")
+        batch_size = config.get("batch_size", 10)
+        data = variables.get(source, [])
+        if not isinstance(data, list):
+            return {"error": f"Source '{source}' nao e uma lista"}
+        batches = [data[i:i+batch_size] for i in range(0, len(data), batch_size)]
+        return {"output": {"batches": batches, "batch_count": len(batches), "total_items": len(data)}}
+
+    def _exec_loop(self, config: Dict, variables: Dict) -> Dict:
+        source = config.get("source", "")
+        max_iterations = min(config.get("max_iterations", 100), 1000)
+        data = variables.get(source, [])
+        if not isinstance(data, list):
+            return {"error": f"Source '{source}' nao e uma lista"}
+        results = []
+        for i, item in enumerate(data[:max_iterations]):
+            results.append({"index": i, "item": item})
+        return {"output": {"loop_results": results, "iterations": len(results)}}
+
+    def _exec_send_email(self, config: Dict, variables: Dict) -> Dict:
+        to = self._interpolate(config.get("to", ""), variables)
+        subject = self._interpolate(config.get("subject", ""), variables)
+        body = self._interpolate(config.get("body", ""), variables)
+        # Emit event for Node.js email service to handle
+        event_bus.emit("system.send_email", {"to": to, "subject": subject, "body": body})
+        return {"output": {"email_queued": True, "to": to, "subject": subject}}
+
+    def _exec_send_whatsapp(self, config: Dict, variables: Dict) -> Dict:
+        to = self._interpolate(config.get("to", ""), variables)
+        message = self._interpolate(config.get("message", ""), variables)
+        # Emit event for Node.js WhatsApp service to handle
+        event_bus.emit("system.send_whatsapp", {"to": to, "message": message, "channel_id": config.get("channel_id")})
+        return {"output": {"whatsapp_queued": True, "to": to}}
+
+    def _exec_update_record(self, config: Dict, variables: Dict) -> Dict:
+        if not HAS_PSYCOPG2 or not DATABASE_URL:
+            return {"error": "Database nao disponivel"}
+        table = config.get("table", "")
+        record_id = config.get("id") or variables.get("id")
+        fields = config.get("fields", {})
+        if not table or not record_id or not fields:
+            return {"error": "table, id e fields sao obrigatorios"}
+        # Resolve interpolated values
+        resolved = {k: self._interpolate(str(v), variables) for k, v in fields.items()}
+        set_clauses = ", ".join([f"{k} = %s" for k in resolved.keys()])
+        values = list(resolved.values()) + [record_id]
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            cur.execute(f"UPDATE {table} SET {set_clauses}, updated_at = NOW() WHERE id = %s RETURNING id", values)
+            conn.commit()
+            conn.close()
+            return {"output": {"updated": True, "table": table, "id": record_id}}
+        except Exception as e:
+            return {"error": f"Update falhou: {str(e)}"}
+
+    def _exec_create_record(self, config: Dict, variables: Dict) -> Dict:
+        if not HAS_PSYCOPG2 or not DATABASE_URL:
+            return {"error": "Database nao disponivel"}
+        table = config.get("table", "")
+        fields = config.get("fields", {})
+        if not table or not fields:
+            return {"error": "table e fields sao obrigatorios"}
+        resolved = {k: self._interpolate(str(v), variables) for k, v in fields.items()}
+        cols = ", ".join(resolved.keys())
+        placeholders = ", ".join(["%s"] * len(resolved))
+        values = list(resolved.values())
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cur = conn.cursor()
+            cur.execute(f"INSERT INTO {table} ({cols}) VALUES ({placeholders}) RETURNING id", values)
+            new_id = cur.fetchone()[0]
+            conn.commit()
+            conn.close()
+            return {"output": {"created": True, "table": table, "new_id": new_id}}
+        except Exception as e:
+            return {"error": f"Insert falhou: {str(e)}"}
+
+    def _exec_manus_task(self, config: Dict, variables: Dict) -> Dict:
+        prompt = self._interpolate(config.get("prompt", ""), variables)
+        # Emit event — Node.js Manus service will handle execution
+        event_bus.emit("system.manus_task", {
+            "prompt": prompt,
+            "user_id": config.get("user_id") or variables.get("user_id"),
+            "automation_context": variables,
+        })
+        return {"output": {"manus_task_queued": True, "prompt": prompt[:200]}}
+
+    def _interpolate(self, template: str, variables: Dict) -> str:
+        """Replace {{variable}} placeholders with values from variables dict."""
+        import re
+        def replace(match):
+            key = match.group(1).strip()
+            val = variables.get(key, match.group(0))
+            return str(val) if val is not None else ""
+        return re.sub(r"\{\{(.+?)\}\}", replace, template)
 
     def get_executions(self, workflow_id: str = None, limit: int = 50) -> List[Dict]:
         execs = self._executions
@@ -497,8 +730,14 @@ async def health_check():
 async def version():
     return {
         "name": "Arcadia Automation Engine",
-        "version": "1.0.0",
-        "capabilities": ["scheduler", "event_bus", "workflow_executor", "cron", "http_actions", "sql_queries"],
+        "version": "2.0.0",
+        "capabilities": [
+            "scheduler", "event_bus", "workflow_executor", "cron",
+            "http_actions", "sql_queries", "sub_workflows", "loop",
+            "split_batch", "retry", "error_branch", "send_email",
+            "send_whatsapp", "update_record", "create_record",
+            "manus_task", "crm_events", "variable_interpolation",
+        ],
     }
 
 
@@ -584,7 +823,76 @@ async def event_stats():
 
 @app.get("/events/types")
 async def event_types():
-    return {"types": [e.value for e in EventType]}
+    return {
+        "types": [e.value for e in EventType],
+        "crm_types": [e.value for e in CrmEventType],
+    }
+
+
+# --- XOS CRM Automation trigger ---
+
+@app.post("/xos/trigger")
+async def trigger_xos_automation(trigger: XosAutomationTrigger, background_tasks: BackgroundTasks):
+    """
+    Receives CRM events (contact_created, deal_stage_changed, etc.)
+    and emits them to the event bus so active xos_automations can react.
+    Also calls the Node.js XOS webhook so database-persisted automations execute.
+    """
+    full_payload = {"tenant_id": trigger.tenant_id, **trigger.payload}
+    triggered = event_bus.emit(trigger.event_type, full_payload)
+
+    # Also emit to generic record.created for wildcard listeners
+    if trigger.event_type.startswith("crm."):
+        event_bus.emit(EventType.RECORD_CREATED, {
+            "entity_type": trigger.event_type.replace("crm.", ""),
+            **full_payload,
+        })
+
+    # Forward to Node.js XOS automations engine (fire DB-persisted automations)
+    background_tasks.add_task(_call_xos_webhook, trigger.event_type, full_payload)
+
+    return {
+        "success": True,
+        "event_type": trigger.event_type,
+        "triggered_handlers": triggered,
+        "timestamp": datetime.now().isoformat(),
+    }
+
+
+async def _call_xos_webhook(event_type: str, payload: Dict):
+    """Non-blocking call to Node.js to fire DB-persisted XOS automations."""
+    import urllib.request
+    node_port = os.environ.get("PORT", "5000")
+    url = f"http://localhost:{node_port}/api/xos/automations/webhook/crm-event"
+    try:
+        body = json.dumps({"event_type": event_type, "payload": payload}).encode()
+        req = urllib.request.Request(url, data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        req.add_header("X-Internal-Call", "automation-engine")
+        urllib.request.urlopen(req, timeout=5)
+    except Exception as e:
+        print(f"[XOS Webhook] Nao foi possivel notificar Node.js: {e}")
+
+
+@app.get("/xos/event-types")
+async def xos_event_types():
+    return {"crm_event_types": [e.value for e in CrmEventType]}
+
+
+@app.post("/cron/validate")
+async def validate_cron_post(body: Dict):
+    expression = body.get("expression", "")
+    try:
+        cron = CronExpression(expression)
+        next_runs = []
+        dt = datetime.now()
+        for _ in range(5):
+            dt = cron.next_run(dt)
+            next_runs.append(dt.isoformat())
+            dt += timedelta(minutes=1)
+        return {"valid": True, "expression": expression, "next_runs": next_runs}
+    except ValueError as e:
+        return {"valid": False, "expression": expression, "error": str(e)}
 
 
 # --- Workflow endpoints ---

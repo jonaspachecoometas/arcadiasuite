@@ -733,6 +733,33 @@ export const MANUS_TOOLS: ManusToolDef[] = [
       dateTo: { type: "string", description: "Data final (YYYY-MM-DD)", required: false },
       storeId: { type: "number", description: "ID da loja para filtrar", required: false }
     }
+  },
+  {
+    name: "automation_trigger",
+    description: "Dispara uma automação existente ou emite um evento no barramento. Use para encadear automações, disparar workflows CRM, ou emitir eventos personalizados que ativam outras automações.",
+    parameters: {
+      automation_id: { type: "number", description: "ID da automação a executar (opcional se usar event_type)", required: false },
+      event_type: { type: "string", description: "Tipo de evento a emitir no barramento: crm.contact.created, crm.deal.stage_changed, crm.ticket.created, crm.message.received, manual.trigger, system.event, etc.", required: false },
+      payload: { type: "string", description: "Dados adicionais em JSON para passar à automação ou ao evento (ex: '{\"contact_id\": 42, \"stage\": \"qualified\"}')", required: false },
+      tenant_id: { type: "number", description: "ID do tenant para automações multi-tenant (xos_automations)", required: false }
+    }
+  },
+  {
+    name: "xos_action",
+    description: "Executa ações no XOS CRM: criar/atualizar contatos, mover deals no pipeline, criar tickets, atribuir agentes, criar tarefas, enviar campanhas. Use para automatizar operações de CRM via IA.",
+    parameters: {
+      action: { type: "string", description: "Ação a executar: create_contact, update_contact, create_deal, move_deal_stage, create_ticket, assign_agent, create_task, create_activity, send_campaign, create_note", required: true },
+      data: { type: "string", description: "Dados para a ação em JSON. Ex: create_contact: '{\"name\":\"João\",\"email\":\"joao@ex.com\",\"type\":\"lead\"}'; move_deal_stage: '{\"deal_id\":5,\"stage_id\":3}'; create_ticket: '{\"title\":\"Bug\",\"contact_id\":2,\"priority\":\"high\"}'", required: true }
+    }
+  },
+  {
+    name: "inbox_action",
+    description: "Executa ações na Central de Atendimento: fechar/transferir conversas, enviar mensagens automáticas, atribuir agentes, adicionar etiquetas, criar protocolos, alterar status de tickets de suporte.",
+    parameters: {
+      action: { type: "string", description: "Ação: close_conversation, transfer_conversation, send_message, assign_agent, add_label, create_protocol, resolve_ticket, escalate_ticket, send_csat", required: true },
+      conversation_id: { type: "number", description: "ID da conversa (obrigatório para ações em conversas existentes)", required: false },
+      data: { type: "string", description: "Dados adicionais em JSON. Ex: transfer: '{\"queue_id\":2}'; send_message: '{\"content\":\"Olá!\",\"type\":\"text\"}'; assign_agent: '{\"agent_id\":5}'", required: false }
+    }
   }
 ];
 

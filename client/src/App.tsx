@@ -67,6 +67,9 @@ const XosAutomations = lazy(() => import("@/pages/XosAutomations"));
 const XosSites = lazy(() => import("@/pages/XosSites"));
 const XosGovernance = lazy(() => import("@/pages/XosGovernance"));
 const XosPipeline = lazy(() => import("@/pages/XosPipeline"));
+const XosSupervisor = lazy(() => import("@/pages/XosSupervisor"));
+const XosReports = lazy(() => import("@/pages/XosReports"));
+const XosProtocols = lazy(() => import("@/pages/XosProtocols"));
 
 
 function LoadingFallback() {
@@ -135,6 +138,9 @@ function Router() {
       <ProtectedRoute path="/xos/sites" component={XosSites} />
       <ProtectedRoute path="/xos/governance" component={XosGovernance} />
       <ProtectedRoute path="/xos/pipeline" component={XosPipeline} />
+      <ProtectedRoute path="/xos/supervisor" component={XosSupervisor} />
+      <ProtectedRoute path="/xos/reports" component={XosReports} />
+      <ProtectedRoute path="/xos/protocols" component={XosProtocols} />
 
       <ProtectedRoute path="/doctype-builder" component={DocTypeBuilder} />
       <ProtectedRoute path="/page-builder" component={PageBuilder} />
