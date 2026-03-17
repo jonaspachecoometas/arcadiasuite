@@ -2919,11 +2919,11 @@ export default function BiWorkspace() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold text-[#1f334d]">MetaSet - Motor de BI</h2>
+                    <h2 className="text-lg font-semibold text-[#1f334d]">Superset - Motor de BI</h2>
                     <p className="text-sm text-gray-500">Acesso completo para criação manual de consultas SQL, gráficos e dashboards</p>
                   </div>
                   <a
-                    href="/api/bi/metaset/autologin"
+                    href="/api/bi/superset/autologin"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-2 px-4 py-2 bg-[#1f334d] text-white rounded-lg hover:bg-[#2a4466] transition-colors text-sm"
@@ -2934,9 +2934,9 @@ export default function BiWorkspace() {
                 </div>
                 <div className="rounded-xl overflow-hidden border border-[#c89b3c]/20 bg-white shadow-sm" style={{ height: 'calc(100vh - 320px)' }}>
                   <iframe
-                    src="/api/bi/metaset/autologin"
+                    src="https://bi.onboardbi.com.br/superset/welcome/"
                     className="w-full h-full border-0"
-                    title="MetaSet - Arcádia Insights"
+                    title="Superset - Arcádia Insights"
                     data-testid="iframe-metaset-advanced"
                     allow="fullscreen"
                   />

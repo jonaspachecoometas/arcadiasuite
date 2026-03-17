@@ -147,5 +147,55 @@ export function registerSupersetRoutes(app: Express): void {
     }
   });
 
+  // Autologin — faz login transparente no Superset e redireciona para /superset/
+  app.get("/api/bi/superset/autologin", async (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ error: "Not authenticated" });
+
+      // Passo 1: obter CSRF token da página de login
+      const loginPageResp = await fetch(`${SUPERSET_URL}/login/`);
+      const loginPageText = await loginPageResp.text();
+      const csrfMatch = loginPageText.match(/name="csrf_token"[\s\S]*?value="([^"]+)"/);
+      if (!csrfMatch) return res.status(502).json({ error: "CSRF token não encontrado no Superset" });
+
+      const csrfToken = csrfMatch[1];
+      const initialCookies = loginPageResp.headers.get("set-cookie") || "";
+
+      // Passo 2: fazer POST de login com as credenciais de admin
+      const formBody = new URLSearchParams({
+        username: ADMIN_USER,
+        password: ADMIN_PASS,
+        csrf_token: csrfToken,
+      });
+
+      const loginResp = await fetch(`${SUPERSET_URL}/login/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Cookie: initialCookies,
+        },
+        body: formBody.toString(),
+        redirect: "manual",
+      });
+
+      // Passo 3: extrair o cookie de sessão e repassar ao browser
+      const setCookieRaw = loginResp.headers.get("set-cookie") || "";
+      const sessionMatch = setCookieRaw.match(/session=([^;]+)/);
+      if (sessionMatch) {
+        res.cookie("session", sessionMatch[1], {
+          domain: ".onboardbi.com.br",
+          secure: true,
+          path: "/",
+          httpOnly: true,
+          sameSite: "lax",
+        });
+      }
+
+      res.redirect("https://bi.onboardbi.com.br/superset/welcome/");
+    } catch (err: any) {
+      res.status(502).json({ error: err.message });
+    }
+  });
+
   console.log("[Superset] Rotas registradas em /api/superset/*");
 }

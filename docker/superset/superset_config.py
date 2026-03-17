@@ -11,8 +11,17 @@ ENABLE_CORS = True
 CORS_OPTIONS = {
     "supports_credentials": True,
     "allow_headers": ["*"],
-    "resources": {r"/api/*": {"origins": "*"}},
+    "resources": {r"/*": {"origins": ["https://suite.onboardbi.com.br"]}},
 }
+
+# Permitir embedding em iframe a partir do suite
+TALISMAN_ENABLED = False
+HTTP_HEADERS = {}
+
+# Cookie de sessão acessível por todos os subdomínios de onboardbi.com.br
+SESSION_COOKIE_DOMAIN = ".onboardbi.com.br"
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = True
 
 FEATURE_FLAGS = {
     "EMBEDDED_SUPERSET": True,

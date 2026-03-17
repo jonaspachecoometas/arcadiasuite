@@ -72,15 +72,12 @@ services:
         condition: service_started
     networks:
       - arcadia-internal
-      - coolify
+      - arcadia-public
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=coolify"
-      - "traefik.http.routers.arcadia.entrypoints=https"
       - "traefik.http.routers.arcadia.rule=Host(`${DOMAIN}`)"
       - "traefik.http.routers.arcadia.tls=true"
       - "traefik.http.routers.arcadia.tls.certresolver=letsencrypt"
-      - "traefik.http.services.arcadia.loadbalancer.server.port=5000"
 
   # ── Microserviços Python ─────────────────────────────────────────────────────
   contabil:
@@ -156,9 +153,6 @@ services:
       SERVICE_NAME: embeddings
       SERVICE_PORT: 8001
       DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
-      LITELLM_BASE_URL: http://litellm:4000
-      LITELLM_API_KEY: ${LITELLM_API_KEY}
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
     depends_on:
       db:
         condition: service_healthy
@@ -176,13 +170,12 @@ services:
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LITELLM_MASTER_KEY: ${LITELLM_API_KEY}
-      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/litellm
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
       # Ollama: se instalado no host use http://host-gateway:11434
       # Se usar container Docker, mantém http://ollama:11434
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
       # LLMFit: URL do serviço de modelos fine-tuned
       LLMFIT_BASE_URL: ${LLMFIT_BASE_URL:-}
-      LLMFIT_API_KEY: ${LLMFIT_API_KEY:-}
       # Providers externos opcionais (soberania: só habilitados se configurados)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -191,7 +184,6 @@ services:
         condition: service_healthy
     networks:
       - arcadia-internal
-      - coolify
 
   # ── Ollama (LLMs locais — soberania total) ────────────────────────────────────
   # OPÇÃO A (padrão): Ollama como container Docker
@@ -223,7 +215,7 @@ services:
       - litellm
     networks:
       - arcadia-internal
-      - coolify
+      - arcadia-public
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.webui.rule=Host(`ai.${DOMAIN}`)"
@@ -232,50 +224,14 @@ services:
       - "traefik.http.services.webui.loadbalancer.server.port=8080"
     profiles: [ai]
 
-  # ── Superset BI ───────────────────────────────────────────────────────────────
-  superset:
-    build:
-      context: ./docker/superset
-      dockerfile: Dockerfile
-    restart: always
-    environment:
-      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
-      SQLALCHEMY_DATABASE_URI: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/superset
-      PYTHONPATH: /app/pythonpath
-      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
-      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
-      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@onboardbi.com.br}
-      ARCADIA_DATABASE_URL: postgresql+psycopg2://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
-    command: ["/bin/bash", "/app/docker/init.sh"]
-    volumes:
-      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
-      - ./docker/superset/init.sh:/app/docker/init.sh:ro
-      - superset_home:/app/superset_home
-    depends_on:
-      db:
-        condition: service_healthy
-    networks:
-      - arcadia-internal
-      - coolify
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=coolify"
-      - "traefik.http.routers.superset.entrypoints=https"
-      - "traefik.http.routers.superset.rule=Host(`${SUPERSET_DOMAIN:-bi.onboardbi.com.br}`)"
-      - "traefik.http.routers.superset.tls=true"
-      - "traefik.http.routers.superset.tls.certresolver=letsencrypt"
-      - "traefik.http.services.superset.loadbalancer.server.port=8088"
-    profiles: [bi]
-
 networks:
   arcadia-internal:
     driver: bridge
-  coolify:
-    external: true
+  arcadia-public:
+    driver: bridge
 
 volumes:
   pgdata:
   redis_data:
   ollama_models:
   open_webui_data:
-  superset_home:
