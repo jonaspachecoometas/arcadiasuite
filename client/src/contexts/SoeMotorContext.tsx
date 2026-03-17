@@ -1,12 +1,20 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 
-interface SoeMotorContextType {}
+interface SoeMotorContextValue {
+  activeCompany: string | null;
+  setActiveCompany: (id: string | null) => void;
+}
 
-const SoeMotorContext = createContext<SoeMotorContextType>({});
+const SoeMotorContext = createContext<SoeMotorContextValue>({
+  activeCompany: null,
+  setActiveCompany: () => {},
+});
 
 export function SoeMotorProvider({ children }: { children: ReactNode }) {
+  const [activeCompany, setActiveCompany] = useState<string | null>(null);
+
   return (
-    <SoeMotorContext.Provider value={{}}>
+    <SoeMotorContext.Provider value={{ activeCompany, setActiveCompany }}>
       {children}
     </SoeMotorContext.Provider>
   );
