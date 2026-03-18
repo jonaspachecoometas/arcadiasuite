@@ -7,7 +7,6 @@
  *   DATABASE_URL=postgres://... npx tsx scripts/seed-soe-rules.ts
  */
 
-import "dotenv/config";
 import pg from "pg";
 import { FISCAL_RULES_PADRAO } from "../server/soe/rule-engine/fiscal-rules";
 import { BUSINESS_RULES_PADRAO } from "../server/soe/rule-engine/business-rules";
