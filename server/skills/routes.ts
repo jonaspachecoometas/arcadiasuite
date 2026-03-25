@@ -8,6 +8,9 @@ import {
 import { eq, and, desc, ilike, or, ne } from "drizzle-orm";
 import { z } from "zod";
 import { skillEngine } from "./engine";
+import { VersionManager } from "./versioning";
+
+const versionManager = new VersionManager();
 
 const executeBodySchema = z.object({
   inputParams: z.record(z.unknown()).optional(),
@@ -303,6 +306,117 @@ export function registerSkillRoutes(app: Express): void {
 
       if (!execution) return res.status(404).json({ error: "Execução não encontrada" });
       res.json(execution);
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Versionamento: listar versões ──────────────────────────────────────────
+
+  app.get("/api/skills/:id/versions", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const offset = parseInt(req.query.offset as string) || 0;
+
+      const versions = await versionManager.listVersions(id, limit, offset);
+      res.json({ versions });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Versionamento: criar versão ────────────────────────────────────────────
+
+  app.post("/api/skills/:id/versions", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { message } = req.body;
+      const uid = userId(req);
+
+      if (!message) {
+        return res.status(400).json({ error: "message required" });
+      }
+
+      const skill = await db
+        .select()
+        .from(arcadiaSkills)
+        .where(eq(arcadiaSkills.id, id))
+        .executeTakeFirst();
+
+      if (!skill) {
+        return res.status(404).json({ error: "Skill not found" });
+      }
+
+      const version = await versionManager.createVersion(
+        id,
+        message,
+        uid || "system",
+        skill.content
+      );
+
+      res.json({ version });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Versionamento: rollback ────────────────────────────────────────────────
+
+  app.post("/api/skills/:id/rollback", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { sha } = req.body;
+      const uid = userId(req);
+
+      if (!sha) {
+        return res.status(400).json({ error: "sha required" });
+      }
+
+      const skill = await versionManager.rollbackToVersion(id, sha, uid || "system");
+      res.json({ skill, message: `Rolled back to ${sha.slice(0, 7)}` });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Versionamento: fork ────────────────────────────────────────────────────
+
+  app.post("/api/skills/:id/fork", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { newSlug } = req.body;
+      const uid = userId(req);
+
+      if (!newSlug) {
+        return res.status(400).json({ error: "newSlug required" });
+      }
+
+      const skill = await versionManager.fork(id, newSlug, uid || "system");
+      res.json({ skill, message: `Forked to ${newSlug}` });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message });
+    }
+  });
+
+  // ── Versionamento: diff ────────────────────────────────────────────────────
+
+  app.get("/api/skills/:id/diff", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { from, to } = req.query;
+
+      if (!from || !to) {
+        return res.status(400).json({ error: "from and to shas required" });
+      }
+
+      const diff = await versionManager.diffVersions(
+        id,
+        from as string,
+        to as string
+      );
+
+      res.json({ diff });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
