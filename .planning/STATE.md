@@ -1,16 +1,17 @@
 # State
 
-## Current Phase: 3 — MiroFlow Embutido
+## Current Phase: 4 — OpenClaw Embutido
 
 ## Completed
 - Phase 1: submodules, tabelas, Neo4j, ReferenceParser
-- Phase 2: SkillEngine, API REST, Monaco Editor, /skills, autocomplete, Marketplace
-
-## Completed Plans
-- Phase 3, Plan 01: miroflow_service.py + tests (60f1c5c, 76e1d34)
+- Phase 2: SkillEngine, API REST, Monaco Editor, /skills, autocomplete, Marketplace, versionamento Git-like
+- Phase 3: miroflow_service.py, bridge TS + KG logging, MiroFlowControl.tsx + tab Científico
 
 ## In Progress
-- Phase 2 pendente: versionamento Git-like de skills (pode ser feito em paralelo ou movido para backlog)
+- (nenhum — iniciar Phase 4)
+
+## Roadmap Evolution
+- Phase 7 added: Skill Fabric Expandido (compiladores, sandbox, 3 editor modes, validation pipeline)
 
 ## Notes
 - Superset em produção com RLS configurado — não alterar sem confirmação

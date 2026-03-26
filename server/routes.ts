@@ -65,6 +65,8 @@ import { loadModuleRoutes } from "./modules/loader";
 import graphRoutes from "./graph/routes";
 import { initSocketIO } from "./socket-io";
 import { startXosScheduler } from "./xos/scheduler";
+import { registerOpenClawRoutes } from "./openclaw/routes";
+import { startPatternDetector } from "./openclaw/pattern-detector";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -160,6 +162,10 @@ export async function registerRoutes(
 
   // XOS Scheduler: SLA breach checker + supervisor stats broadcaster
   startXosScheduler();
+
+  // OpenClaw — PatternDetector (Phase 4)
+  registerOpenClawRoutes(app);
+  startPatternDetector();
   
   // Central de Protocolos (MCP, A2A, AP2, UCP)
   app.use("/api", protocolsRoutes);

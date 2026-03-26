@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { db } from '@/lib/db';
+import { db } from '../../db/index';
 import { Skill } from './engine';
 
 export interface SkillVersion {

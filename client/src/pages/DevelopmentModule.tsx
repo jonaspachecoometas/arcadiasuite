@@ -25,8 +25,9 @@ import PageBuilder from "./PageBuilder";
 import WorkflowBuilder from "./WorkflowBuilder";
 import IDE from "./IDE";
 import DevAgent from "@/components/lowcode/DevAgent";
+import OpenClawPanel from "@/components/OpenClawPanel";
 
-type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent";
+type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent" | "openclaw";
 
 interface Dashboard {
   id: number;
@@ -250,12 +251,21 @@ export default function DevelopmentModule() {
       count: 0,
       category: "dev"
     },
-    { 
-      id: "agent" as ActiveTool, 
-      name: "Manus AI", 
+    {
+      id: "agent" as ActiveTool,
+      name: "Manus AI",
       description: "Agente autônomo de IA",
-      icon: Bot, 
+      icon: Bot,
       color: "bg-violet-600",
+      count: 0,
+      category: "dev"
+    },
+    {
+      id: "openclaw" as ActiveTool,
+      name: "Skills Emergentes",
+      description: "Padrões detectados automaticamente",
+      icon: Sparkles,
+      color: "bg-yellow-500",
       count: 0,
       category: "dev"
     },
@@ -705,6 +715,7 @@ export default function DevelopmentModule() {
         {activeTool === "scripts" && renderScriptEditor()}
         {activeTool === "ide" && <IDE />}
         {activeTool === "agent" && <DevAgent />}
+        {activeTool === "openclaw" && <OpenClawPanel />}
       </div>
 
       <Dialog open={showNewDashboardDialog} onOpenChange={setShowNewDashboardDialog}>

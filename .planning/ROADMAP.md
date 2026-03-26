@@ -7,8 +7,8 @@ Evolução do Arcádia Suite de ERP tradicional para Sistema Agêntico Orientado
 ## Phases
 
 - [x] **Phase 1: Fundação** - Infraestrutura base: submodules MiroFlow/OpenClaw, tabelas skills, Neo4j, ReferenceParser
-- [~] **Phase 2: Skills Engine** - Skills criáveis e executáveis com editor Monaco e Marketplace
-- [ ] **Phase 3: MiroFlow Embutido** - Análises científicas via agentes especializados + bridge Superset
+- [x] **Phase 2: Skills Engine** - Skills criáveis e executáveis com editor Monaco e Marketplace
+- [x] **Phase 3: MiroFlow Embutido** - Análises científicas via agentes especializados + bridge Superset
 - [ ] **Phase 4: OpenClaw Embutido** - Skills emergentes com detecção de padrões
 - [ ] **Phase 5: Automation Fabric** - Automações unificadas (XOS + Central)
 - [ ] **Phase 6: Dev Center Completo** - Fábrica de agentes: Design → Assemble → Deploy
@@ -43,7 +43,7 @@ Plans:
 - [x] 02-01: SkillEngine + API REST
 - [x] 02-02: Editor Monaco + autocomplete + rota /skills
 - [x] 02-03: Skill Marketplace (Biblioteca)
-- [ ] 02-04: Versionamento Git-like de skills
+- [x] 02-04: Versionamento Git-like de skills
 
 ### Phase 3: MiroFlow Embutido
 **Goal**: Análises científicas disponíveis via agentes especializados integrados ao Superset
@@ -62,7 +62,7 @@ Plans:
 Plans:
 - [x] 03-01-PLAN.md — Setup (ollama pull llama3.1:8b) + miroflow_service.py FastAPI porta 8006 com 3 agentes
 - [x] 03-02-PLAN.md — Node bridge (engine-proxy.ts + routes.ts) + KG logging SHA-256
-- [ ] 03-03-PLAN.md — Frontend MiroFlowControl.tsx + tab "Científico" em BiWorkspace.tsx
+- [x] 03-03-PLAN.md — Frontend MiroFlowControl.tsx + tab "Científico" em BiWorkspace.tsx
 
 ### Phase 4: OpenClaw Embutido
 **Goal**: Skills emergentes criadas automaticamente a partir de padrões detectados
@@ -99,8 +99,18 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Fundação | 3/3 | Complete | 2026-03-25 |
-| 2. Skills Engine | 3/4 | In progress | - |
-| 3. MiroFlow Embutido | 2/3 | In Progress|  |
+| 2. Skills Engine | 4/4 | Complete | 2026-03-26 |
+| 3. MiroFlow Embutido | 3/3 | Complete | 2026-03-26 |
 | 4. OpenClaw Embutido | 0/TBD | Not started | - |
 | 5. Automation Fabric | 0/TBD | Not started | - |
 | 6. Dev Center Completo | 0/TBD | Not started | - |
+
+### Phase 7: Skill Fabric Expandido: Compiladores, Sandbox Executor, Visual/Code/Markdown Editors com Validation Pipeline
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 7 to break down)
