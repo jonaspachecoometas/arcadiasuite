@@ -26,8 +26,9 @@ import WorkflowBuilder from "./WorkflowBuilder";
 import IDE from "./IDE";
 import DevAgent from "@/components/lowcode/DevAgent";
 import OpenClawPanel from "@/components/OpenClawPanel";
+import AutomationCenter from "./AutomationCenter";
 
-type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent" | "openclaw";
+type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent" | "openclaw" | "automationcenter";
 
 interface Dashboard {
   id: number;
@@ -266,6 +267,15 @@ export default function DevelopmentModule() {
       description: "Padrões detectados automaticamente",
       icon: Sparkles,
       color: "bg-yellow-500",
+      count: 0,
+      category: "dev"
+    },
+    {
+      id: "automationcenter" as ActiveTool,
+      name: "Automation Center",
+      description: "Automações unificadas Central + XOS",
+      icon: Workflow,
+      color: "bg-blue-600",
       count: 0,
       category: "dev"
     },
@@ -716,6 +726,7 @@ export default function DevelopmentModule() {
         {activeTool === "ide" && <IDE />}
         {activeTool === "agent" && <DevAgent />}
         {activeTool === "openclaw" && <OpenClawPanel />}
+        {activeTool === "automationcenter" && <AutomationCenter />}
       </div>
 
       <Dialog open={showNewDashboardDialog} onOpenChange={setShowNewDashboardDialog}>
