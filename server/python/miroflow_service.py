@@ -25,8 +25,8 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 RESEARCHER_MODEL = os.getenv("MIROFLOW_RESEARCHER_MODEL", "llama3.1:8b")
 
 AGENT_MODELS = {
-    "statistician": "deepseek-r1:14b",
-    "fiscal_auditor": "deepseek-r1:14b",
+    "statistician": "llama3.2:3b",
+    "fiscal_auditor": "llama3.2:3b",
     "researcher": RESEARCHER_MODEL,
 }
 
@@ -75,7 +75,19 @@ async def run_agent(agent_type: str, task: str) -> tuple[str, str]:
         initial_user_message=task,
     )
     result = await agent.run(ctx)
-    text = result.get("summary", str(result)) if isinstance(result, dict) else str(result)
+    if isinstance(result, dict):
+        text = (
+            result.get("summary")
+            or result.get("final_boxed_answer")
+            or result.get("exceed_max_turn_summary")
+            or next(
+                (m["content"] for m in reversed(result.get("message_history") or []) if m.get("role") == "assistant"),
+                None,
+            )
+            or str(result)
+        )
+    else:
+        text = str(result)
     return text, cfg["llm"]["model_name"]
 
 
