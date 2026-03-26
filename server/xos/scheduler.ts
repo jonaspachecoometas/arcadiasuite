@@ -3,7 +3,7 @@
  * - Every 5 min: check SLA breaches and emit events
  * - Every 30 sec: broadcast live supervisor stats via Socket.IO
  */
-import { db } from "../db";
+import { db } from "../../db";
 import { sql } from "drizzle-orm";
 import { broadcastXos } from "../socket-io";
 

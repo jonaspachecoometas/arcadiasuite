@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { pg } from '../db';
+import { pg } from '../../db';
 import { systemDocumentation } from '@shared/schema';
 
 const router = Router();
