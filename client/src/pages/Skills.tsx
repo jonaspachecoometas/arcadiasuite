@@ -1,4 +1,5 @@
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
+import OpenClawPanel from "@/components/OpenClawPanel";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -143,7 +144,7 @@ export default function Skills() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historySkill, setHistorySkill] = useState<Skill | null>(null);
 
-  const [view, setView] = useState<"minhas" | "marketplace">("minhas");
+  const [view, setView] = useState<"minhas" | "marketplace" | "sugestoes">("minhas");
   const [mktSearch, setMktSearch] = useState("");
   const [mktTag, setMktTag] = useState("all");
   const [importedId, setImportedId] = useState<string | null>(null);
@@ -186,6 +187,12 @@ export default function Skills() {
     },
     enabled: view === "marketplace",
   });
+
+  const { data: sugData } = useQuery<{ suggestions: unknown[]; total: number }>({
+    queryKey: ["/api/openclaw/suggestions"],
+    refetchInterval: 5 * 60 * 1000,
+  });
+  const pendingSuggestionsCount = sugData?.total ?? 0;
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
@@ -415,6 +422,17 @@ export default function Skills() {
                 className={`px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors ${view === "marketplace" ? "bg-[#c89b3c] text-black font-medium" : "text-white/60 hover:text-white hover:bg-white/5"}`}
               >
                 <Store className="w-3.5 h-3.5" /> Biblioteca
+              </button>
+              <button
+                onClick={() => setView("sugestoes")}
+                className={`px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors relative ${view === "sugestoes" ? "bg-[#c89b3c] text-black font-medium" : "text-white/60 hover:text-white hover:bg-white/5"}`}
+              >
+                <Sparkles className="w-3.5 h-3.5" /> Sugestões
+                {pendingSuggestionsCount > 0 && view !== "sugestoes" && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-yellow-400 text-black text-[9px] font-bold flex items-center justify-center">
+                    {pendingSuggestionsCount}
+                  </span>
+                )}
               </button>
             </div>
             {view === "minhas" && (
@@ -669,6 +687,13 @@ export default function Skills() {
           )}
         </ScrollArea>
         </>)}
+
+        {/* ── VIEW: SUGESTÕES (OpenClaw) ──────────────────────────────────────── */}
+        {view === "sugestoes" && (
+          <div className="flex-1 min-h-0">
+            <OpenClawPanel />
+          </div>
+        )}
       </div>
 
       {/* ── Edit / Create Dialog ────────────────────────────────────────────── */}

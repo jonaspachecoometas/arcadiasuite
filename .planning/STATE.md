@@ -6,9 +6,10 @@
 - Phase 1: submodules, tabelas, Neo4j, ReferenceParser
 - Phase 2: SkillEngine, API REST, Monaco Editor, /skills, autocomplete, Marketplace, versionamento Git-like
 - Phase 3: miroflow_service.py, bridge TS + KG logging, MiroFlowControl.tsx + tab Científico
+- Phase 4: PatternDetector (cron 1h), OpenClaw routes (suggestions/patterns/accept/reject), tab Sugestões em /skills + badge contador
 
 ## In Progress
-- (nenhum — iniciar Phase 4)
+- (nenhum — Phase 4 concluída, iniciar Phase 5)
 
 ## Roadmap Evolution
 - Phase 7 added: Skill Fabric Expandido (compiladores, sandbox, 3 editor modes, validation pipeline)
