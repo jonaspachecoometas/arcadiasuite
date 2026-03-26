@@ -67,6 +67,7 @@ import { initSocketIO } from "./socket-io";
 import { startXosScheduler } from "./xos/scheduler";
 import { registerOpenClawRoutes } from "./openclaw/routes";
 import { startPatternDetector } from "./openclaw/pattern-detector";
+import { registerAutomationFabricRoutes } from "./automation-fabric/routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -166,6 +167,9 @@ export async function registerRoutes(
   // OpenClaw — PatternDetector (Phase 4)
   registerOpenClawRoutes(app);
   startPatternDetector();
+
+  // Automation Fabric — runtime unificado (Phase 5)
+  registerAutomationFabricRoutes(app);
   
   // Central de Protocolos (MCP, A2A, AP2, UCP)
   app.use("/api", protocolsRoutes);

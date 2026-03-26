@@ -71,6 +71,7 @@ const XosSupervisor = lazy(() => import("@/pages/XosSupervisor"));
 const XosReports = lazy(() => import("@/pages/XosReports"));
 const XosProtocols = lazy(() => import("@/pages/XosProtocols"));
 const Skills = lazy(() => import("@/pages/Skills"));
+const AutomationCenter = lazy(() => import("@/pages/AutomationCenter"));
 
 
 function LoadingFallback() {
@@ -148,6 +149,7 @@ function Router() {
       <ProtectedRoute path="/migration" component={Migration} />
       <ProtectedRoute path="/dev-center" component={DevCenter} />
       <ProtectedRoute path="/skills" component={Skills} />
+      <ProtectedRoute path="/automations-center" component={AutomationCenter} />
       <ProtectedRoute path="/page/:id" component={WorkspacePage} />
       <ProtectedRoute path="/app/:id" component={AppViewer} />
       <Route path="/auth" component={AuthPage} />
