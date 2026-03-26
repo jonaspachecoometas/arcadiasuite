@@ -692,7 +692,7 @@ export default function DevelopmentModule() {
 
   return (
     <div className="h-full flex bg-gray-50">
-      <div className="w-16 bg-gray-900 flex flex-col items-center py-4 gap-2 overflow-y-auto">
+      <div className="w-16 bg-gray-900 flex flex-col items-center py-4 gap-2 overflow-y-auto h-full">
         <button
           onClick={() => setActiveTool("home")}
           className={`p-3 rounded-lg transition-colors ${activeTool === "home" ? "bg-blue-600" : "hover:bg-gray-700"}`}
