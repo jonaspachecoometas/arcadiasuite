@@ -91,7 +91,17 @@ function CompactNavigationBar() {
           </div>
           <span className="hidden md:inline">Insights</span>
         </div>
-        <div 
+        <div
+          className="flex items-center gap-1 hover:bg-muted px-2 py-1.5 rounded cursor-pointer transition-colors flex-shrink-0"
+          onClick={() => navigateTo("/scientist", "MiroFlow")}
+          data-testid="bookmark-miroflow"
+        >
+          <div className="w-4 h-4 bg-gradient-to-br from-violet-600 to-violet-800 rounded-sm flex items-center justify-center">
+            <Beaker className="w-2.5 h-2.5 text-white" />
+          </div>
+          <span className="hidden md:inline">MiroFlow</span>
+        </div>
+        <div
           className="flex items-center gap-1 hover:bg-muted px-2 py-1.5 rounded cursor-pointer transition-colors flex-shrink-0"
           onClick={() => navigateTo("/compass", "Compass")}
           data-testid="bookmark-compass"
