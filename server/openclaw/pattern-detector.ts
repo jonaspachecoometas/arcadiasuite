@@ -11,7 +11,7 @@ import crypto from "crypto";
 import OpenAI from "openai";
 import { db } from "../../db/index";
 import {
-  arcadiaSkills,
+  skills as arcadiaSkills,
   skillExecutions,
   detectedPatterns,
   skillSuggestions,

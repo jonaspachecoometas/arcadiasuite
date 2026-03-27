@@ -9,7 +9,7 @@
 
 import type { Express, Request, Response } from "express";
 import { db } from "../../db/index";
-import { arcadiaSkills, detectedPatterns, skillSuggestions } from "@shared/schema";
+import { skills as arcadiaSkills, detectedPatterns, skillSuggestions } from "@shared/schema";
 import { eq, and, desc } from "drizzle-orm";
 
 export function registerOpenClawRoutes(app: Express): void {

@@ -111,3 +111,7 @@ router.get("/:id/executions", async (req, res) => {
 });
 
 export default router;
+
+export function registerSkillRoutes(app: any): void {
+  app.use("/api/skills", router);
+}

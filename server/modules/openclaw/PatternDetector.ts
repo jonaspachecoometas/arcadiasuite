@@ -8,8 +8,8 @@
  * Fase 4: OpenClaw Embutido
  */
 
-import { db } from "@/db";
-import { detectedPatterns, skillSuggestions } from "@/shared/schema";
+import { db } from "../../../db";
+import { detectedPatterns, skillSuggestions } from "../../../shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { EventEmitter } from "events";
 

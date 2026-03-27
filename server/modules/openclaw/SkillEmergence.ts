@@ -7,9 +7,8 @@
  * Fase 4: OpenClaw Embutido
  */
 
-import { db } from "@/db";
-import { skills } from "@/shared/schema";
-import axios, { AxiosError } from "axios";
+import { db } from "../../../db";
+import { skills } from "../../../shared/schema";
 
 interface SkillSuggestion {
   id: string;
@@ -155,45 +154,48 @@ Código:
    */
   private async callBlackboard(prompt: string, suggestion: SkillSuggestion): Promise<BlackboardResponse> {
     try {
-      const response = await axios.post(
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
+      const response = await fetch(
         `${this.blackboardUrl}/generate-skill`,
         {
-          prompt,
-          skill_name: suggestion.suggested_skill_name,
-          context: {
-            pattern_type: suggestion.pattern.action_type,
-            confidence: suggestion.confidence,
-            metadata: suggestion.pattern.metadata,
-          },
-        },
-        {
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-API-Key": this.apiKey,
           },
-          timeout: 30000, // 30 segundos timeout
+          body: JSON.stringify({
+            prompt,
+            skill_name: suggestion.suggested_skill_name,
+            context: {
+              pattern_type: suggestion.pattern.action_type,
+              confidence: suggestion.confidence,
+              metadata: suggestion.pattern.metadata,
+            },
+          }),
+          signal: controller.signal,
         }
       );
+      clearTimeout(timeout);
+
+      const data = await response.json() as any;
 
       console.log("[SkillEmergence] Resposta do Blackboard recebida");
 
       return {
         success: true,
-        code: response.data.code,
-        language: response.data.language || "typescript",
+        code: data.code,
+        language: data.language || "typescript",
       };
     } catch (error) {
-      const axiosError = error as AxiosError<any>;
+      const err = error as Error;
 
-      console.error("[SkillEmergence] Erro ao chamar Blackboard:", {
-        status: axiosError.response?.status,
-        data: axiosError.response?.data,
-        message: axiosError.message,
-      });
+      console.error("[SkillEmergence] Erro ao chamar Blackboard:", err.message);
 
       return {
         success: false,
-        error: axiosError.message,
+        error: err.message,
       };
     }
   }
