@@ -361,18 +361,6 @@ async function fetchManusRun(id: number): Promise<ManusRun> {
   return response.json();
 }
 
-async function cancelManusRun(id: number): Promise<void> {
-  await fetch(`/api/manus/runs/${id}`, { method: "DELETE", credentials: "include" });
-}
-
-async function deleteManusRun(id: number): Promise<void> {
-  await fetch(`/api/manus/runs/${id}`, { method: "DELETE", credentials: "include" });
-}
-
-async function deleteAllManusRuns(): Promise<void> {
-  await fetch("/api/manus/runs", { method: "DELETE", credentials: "include" });
-}
-
 async function startManusRun(data: { prompt: string; attachedFiles?: AttachedFile[]; conversationHistory?: Array<{role: string; content: string}> }): Promise<{ runId: number }> {
   const response = await fetch("/api/manus/run", {
     method: "POST",
@@ -1254,13 +1242,7 @@ export default function Agent() {
             if (line.startsWith("data: ")) {
               try {
                 const data = JSON.parse(line.slice(6));
-                if (data.tool_status) {
-                  setCurrentToolName(data.tool_status);
-                  setProcessingMode("using_tools");
-                }
                 if (data.content) {
-                  setCurrentToolName(null);
-                  setProcessingMode("idle");
                   fullContent += data.content;
                   setStreamingContent(fullContent);
                 }
@@ -1499,21 +1481,8 @@ export default function Agent() {
                   Nova Tarefa
                 </Button>
               </div>
-              <div className="px-3 pt-3 pb-1 flex items-center justify-between">
+              <div className="px-3 pt-3 pb-1">
                 <p className="text-xs text-white/40 uppercase tracking-wider font-medium">Todas as Tarefas</p>
-                {manusRuns.length > 0 && (
-                  <button
-                    onClick={async () => {
-                      await deleteAllManusRuns();
-                      setSelectedRun(null);
-                      queryClient.invalidateQueries({ queryKey: ["manus-runs"] });
-                    }}
-                    className="text-[10px] text-white/30 hover:text-red-400 transition-colors"
-                    title="Limpar histórico"
-                  >
-                    Limpar tudo
-                  </button>
-                )}
               </div>
               <ScrollArea className="flex-1 px-2">
                 {loadingRuns ? (
@@ -1525,35 +1494,22 @@ export default function Agent() {
                 ) : (
                   <div className="space-y-1 pb-2">
                     {manusRuns.map((run) => (
-                      <div key={run.id} className="group relative">
-                        <button
-                          onClick={() => setSelectedRun(run.id)}
-                          className={`w-full text-left p-2.5 rounded-lg transition-all pr-8 ${
-                            selectedRun === run.id
-                              ? "bg-[#c89b3c]/20 border border-[#c89b3c]/50"
-                              : "hover:bg-[#162638] border border-transparent"
-                          }`}
-                          data-testid={`run-${run.id}`}
-                        >
-                          <p className="text-xs text-white line-clamp-2 mb-1.5">{run.prompt}</p>
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(run.status)}
-                            <span className="text-[10px] text-white/40">{formatTime(run.createdAt)}</span>
-                          </div>
-                        </button>
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            await deleteManusRun(run.id);
-                            if (selectedRun === run.id) setSelectedRun(null);
-                            queryClient.invalidateQueries({ queryKey: ["manus-runs"] });
-                          }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-400 transition-all"
-                          title="Excluir"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                      <button
+                        key={run.id}
+                        onClick={() => setSelectedRun(run.id)}
+                        className={`w-full text-left p-2.5 rounded-lg transition-all ${
+                          selectedRun === run.id 
+                            ? "bg-[#c89b3c]/20 border border-[#c89b3c]/50" 
+                            : "hover:bg-[#162638] border border-transparent"
+                        }`}
+                        data-testid={`run-${run.id}`}
+                      >
+                        <p className="text-xs text-white line-clamp-2 mb-1.5">{run.prompt}</p>
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(run.status)}
+                          <span className="text-[10px] text-white/40">{formatTime(run.createdAt)}</span>
+                        </div>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -1973,21 +1929,6 @@ export default function Agent() {
                       className="flex-1 border-[#e1e8f0] focus:border-[#c89b3c] focus:ring-[#c89b3c]/20"
                       data-testid="input-message"
                     />
-                    {isStreaming && (
-                      <Button
-                        onClick={async () => {
-                          if (selectedRun) await cancelManusRun(selectedRun);
-                          setIsStreaming(false);
-                          setProcessingMode("idle");
-                        }}
-                        variant="destructive"
-                        className="shrink-0"
-                        data-testid="button-cancel-run"
-                        title="Cancelar"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    )}
                     <Button
                       onClick={handleSendMessage}
                       disabled={!chatInput.trim() || isStreaming}

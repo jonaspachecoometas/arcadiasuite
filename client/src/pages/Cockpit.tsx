@@ -42,7 +42,7 @@ import {
   Link,
   File
 } from "lucide-react";
-const browserIcon = "/arcadia_suite_icon.png";
+import browserIcon from "@assets/arcadia_branding/arcadia_suite_icon.png";
 import { DigitalClock } from "@/components/DigitalClock";
 
 type ParaTab = "projetos" | "areas" | "recursos" | "arquivo";

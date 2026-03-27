@@ -9,7 +9,7 @@
 // As regras geradas ficam na tabela soe_regras com origemPadrao=false
 // (origem: "erpnext") e podem ser sobrescritas por regras custom do tenant.
 
-import { db } from "../../db";
+import { db } from "../../db/index";
 import { soeRegras } from "@shared/schema";
 import { and, eq } from "drizzle-orm";
 

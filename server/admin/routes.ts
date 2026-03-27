@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { db } from "../../db/index";
 import { eq, desc, and, or, isNull, inArray, sql } from "drizzle-orm";
-import { users, profiles, crmPartners, crmClients, tenants, tenantPlans, partnerClients, partnerCommissions, tenantEmpresas, insertTenantSchema, insertTenantPlanSchema, insertPartnerClientSchema, insertTenantEmpresaSchema } from "@shared/schema";
+import { users, profiles, crmPartners, crmClients, tenants, tenantPlans, partnerClients, partnerCommissions, insertTenantSchema, insertTenantPlanSchema, insertPartnerClientSchema } from "@shared/schema";
 import fs from "fs";
 import path from "path";
 
@@ -36,7 +36,7 @@ router.use((req: Request, res: Response, next) => {
     return res.status(401).json({ error: "Não autorizado" });
   }
   const user = req.user as any;
-  if (user.role !== "admin" && user.role !== "master") {
+  if (user.role !== "admin") {
     return res.status(403).json({ error: "Acesso negado. Apenas administradores." });
   }
   next();
@@ -317,25 +317,10 @@ router.get("/tenants", async (req: Request, res: Response) => {
   }
 });
 
-// Helper: resolve plan features for a tenant based on plan code
-async function resolvePlanFeatures(planCode: string): Promise<Record<string, any> | null> {
-  const [plan] = await db.select().from(tenantPlans).where(eq(tenantPlans.code, planCode));
-  if (!plan || !plan.features) return null;
-  return plan.features as Record<string, any>;
-}
-
 // POST /api/admin/tenants - Create new tenant
 router.post("/tenants", async (req: Request, res: Response) => {
   try {
     const validated = insertTenantSchema.parse(req.body);
-    
-    if (validated.plan && !validated.features) {
-      const planFeatures = await resolvePlanFeatures(validated.plan);
-      if (planFeatures) {
-        validated.features = planFeatures as any;
-      }
-    }
-    
     const [tenant] = await db.insert(tenants).values(validated).returning();
     res.status(201).json(tenant);
   } catch (error: any) {
@@ -349,41 +334,19 @@ router.patch("/tenants/:id", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     const user = req.user as any;
     
+    // Verificar permissão de acesso
     if (!await canAccessTenant(user, id)) {
       return res.status(403).json({ error: "Sem permissão para modificar este tenant" });
     }
     
     const { name, email, phone, plan, status, tenantType, parentTenantId, partnerCode, commissionRate, maxUsers, maxStorageMb, features, billingEmail, trialEndsAt } = req.body;
     
-    let resolvedFeatures = features;
-    if (plan && !features) {
-      const [currentTenant] = await db.select().from(tenants).where(eq(tenants.id, id));
-      if (currentTenant && currentTenant.plan !== plan) {
-        const planFeatures = await resolvePlanFeatures(plan);
-        if (planFeatures) {
-          resolvedFeatures = planFeatures;
-        }
-      }
-    }
-    
-    const updateData: any = { updatedAt: new Date() };
-    if (name !== undefined) updateData.name = name;
-    if (email !== undefined) updateData.email = email;
-    if (phone !== undefined) updateData.phone = phone;
-    if (plan !== undefined) updateData.plan = plan;
-    if (status !== undefined) updateData.status = status;
-    if (tenantType !== undefined) updateData.tenantType = tenantType;
-    if (parentTenantId !== undefined) updateData.parentTenantId = parentTenantId;
-    if (partnerCode !== undefined) updateData.partnerCode = partnerCode;
-    if (commissionRate !== undefined) updateData.commissionRate = commissionRate;
-    if (maxUsers !== undefined) updateData.maxUsers = maxUsers;
-    if (maxStorageMb !== undefined) updateData.maxStorageMb = maxStorageMb;
-    if (resolvedFeatures !== undefined) updateData.features = resolvedFeatures;
-    if (billingEmail !== undefined) updateData.billingEmail = billingEmail;
-    if (trialEndsAt !== undefined) updateData.trialEndsAt = trialEndsAt;
-    
     const [tenant] = await db.update(tenants)
-      .set(updateData)
+      .set({ 
+        name, email, phone, plan, status, tenantType, parentTenantId, partnerCode, 
+        commissionRate, maxUsers, maxStorageMb, features, billingEmail, trialEndsAt,
+        updatedAt: new Date() 
+      })
       .where(eq(tenants.id, id))
       .returning();
     
@@ -499,121 +462,6 @@ router.delete("/plans/:id", async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     await db.delete(tenantPlans).where(eq(tenantPlans.id, id));
     res.status(204).send();
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// POST /api/admin/plans/:id/propagate - Apply plan features to all tenants with this plan
-router.post("/plans/:id/propagate", async (req: Request, res: Response) => {
-  try {
-    const id = parseInt(req.params.id);
-    const [plan] = await db.select().from(tenantPlans).where(eq(tenantPlans.id, id));
-    if (!plan) return res.status(404).json({ error: "Plano não encontrado" });
-    if (!plan.features) return res.status(400).json({ error: "Plano sem módulos definidos" });
-    
-    const affected = await db.update(tenants)
-      .set({ features: plan.features, maxUsers: plan.maxUsers, maxStorageMb: plan.maxStorageMb, updatedAt: new Date() })
-      .where(eq(tenants.plan, plan.code))
-      .returning();
-    
-    res.json({ propagated: affected.length, planCode: plan.code });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// POST /api/admin/plans/seed - Seed default plans
-router.post("/plans/seed", async (req: Request, res: Response) => {
-  try {
-    const existing = await db.select().from(tenantPlans);
-    if (existing.length > 0) {
-      return res.json({ message: "Planos já existem", count: existing.length });
-    }
-    
-    const defaultPlans: any[] = [
-      {
-        code: "free",
-        name: "Gratuito",
-        description: "Plano básico gratuito para experimentar",
-        tenantType: "client",
-        maxUsers: 2,
-        maxStorageMb: 500,
-        monthlyPrice: 0,
-        yearlyPrice: 0,
-        trialDays: 14,
-        sortOrder: 1,
-        features: { erp: true, crm: true },
-      },
-      {
-        code: "starter",
-        name: "Starter",
-        description: "Para pequenas empresas começando",
-        tenantType: "client",
-        maxUsers: 5,
-        maxStorageMb: 2000,
-        monthlyPrice: 9900,
-        yearlyPrice: 99000,
-        trialDays: 14,
-        sortOrder: 2,
-        features: { erp: true, crm: true, bi: true, fisco: true, whatsapp: true, compass: true },
-      },
-      {
-        code: "pro",
-        name: "Profissional",
-        description: "Para empresas em crescimento",
-        tenantType: "client",
-        maxUsers: 15,
-        maxStorageMb: 10000,
-        monthlyPrice: 29900,
-        yearlyPrice: 299000,
-        trialDays: 14,
-        sortOrder: 3,
-        features: { erp: true, crm: true, bi: true, fisco: true, retail: true, plus: true, whatsapp: true, manus: true, cockpit: true, compass: true, support: true, biblioteca: true },
-      },
-      {
-        code: "enterprise",
-        name: "Enterprise",
-        description: "Para grandes empresas",
-        tenantType: "client",
-        maxUsers: 100,
-        maxStorageMb: 50000,
-        monthlyPrice: 99900,
-        yearlyPrice: 999000,
-        trialDays: 30,
-        sortOrder: 4,
-        features: { erp: true, crm: true, bi: true, fisco: true, retail: true, plus: true, whatsapp: true, manus: true, ide: true, cockpit: true, compass: true, production: true, support: true, xosCrm: true, centralApis: true, comunidades: true, biblioteca: true },
-      },
-      {
-        code: "partner_starter",
-        name: "Parceiro Starter",
-        description: "Para consultores e pequenos integradores",
-        tenantType: "partner",
-        maxUsers: 10,
-        maxStorageMb: 5000,
-        monthlyPrice: 19900,
-        yearlyPrice: 199000,
-        trialDays: 14,
-        sortOrder: 5,
-        features: { erp: true, crm: true, bi: true, fisco: true, retail: true, whatsapp: true, compass: true, support: true },
-      },
-      {
-        code: "partner_pro",
-        name: "Parceiro Pro",
-        description: "Para integradores e consultorias",
-        tenantType: "partner",
-        maxUsers: 50,
-        maxStorageMb: 25000,
-        monthlyPrice: 49900,
-        yearlyPrice: 499000,
-        trialDays: 30,
-        sortOrder: 6,
-        features: { erp: true, crm: true, bi: true, fisco: true, retail: true, plus: true, whatsapp: true, manus: true, ide: true, cockpit: true, compass: true, production: true, support: true, xosCrm: true, centralApis: true, comunidades: true, biblioteca: true },
-      },
-    ];
-    
-    const created = await db.insert(tenantPlans).values(defaultPlans).returning();
-    res.status(201).json({ message: "Planos criados com sucesso", count: created.length, plans: created });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -765,108 +613,6 @@ router.get("/tenants/stats", async (req: Request, res: Response) => {
     };
     
     res.json(stats);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ========== TENANT EMPRESAS (Matriz/Filiais) ==========
-
-router.get("/empresas", async (req: Request, res: Response) => {
-  try {
-    const { tenantId } = req.query;
-    const user = req.user as any;
-    
-    let query;
-    if (tenantId) {
-      const tid = parseInt(tenantId as string);
-      if (!(await canAccessTenant(user, tid))) {
-        return res.status(403).json({ error: "Sem permissão para este tenant" });
-      }
-      query = await db.select().from(tenantEmpresas)
-        .where(eq(tenantEmpresas.tenantId, tid))
-        .orderBy(desc(tenantEmpresas.tipo), tenantEmpresas.razaoSocial);
-    } else {
-      const allowed = await getAllowedTenantIds(user);
-      if (allowed) {
-        query = await db.select().from(tenantEmpresas)
-          .where(inArray(tenantEmpresas.tenantId, allowed))
-          .orderBy(desc(tenantEmpresas.tipo), tenantEmpresas.razaoSocial);
-      } else {
-        query = await db.select().from(tenantEmpresas)
-          .orderBy(desc(tenantEmpresas.tipo), tenantEmpresas.razaoSocial);
-      }
-    }
-    res.json(query);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.get("/empresas/:id", async (req: Request, res: Response) => {
-  try {
-    const [empresa] = await db.select().from(tenantEmpresas)
-      .where(eq(tenantEmpresas.id, parseInt(req.params.id)));
-    if (!empresa) return res.status(404).json({ error: "Empresa não encontrada" });
-    
-    const user = req.user as any;
-    if (!(await canAccessTenant(user, empresa.tenantId))) {
-      return res.status(403).json({ error: "Sem permissão" });
-    }
-    res.json(empresa);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-router.post("/empresas", async (req: Request, res: Response) => {
-  try {
-    const data = insertTenantEmpresaSchema.parse(req.body);
-    const user = req.user as any;
-    if (!(await canAccessTenant(user, data.tenantId))) {
-      return res.status(403).json({ error: "Sem permissão para este tenant" });
-    }
-    const [empresa] = await db.insert(tenantEmpresas).values(data).returning();
-    res.json(empresa);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-router.patch("/empresas/:id", async (req: Request, res: Response) => {
-  try {
-    const [existing] = await db.select().from(tenantEmpresas)
-      .where(eq(tenantEmpresas.id, parseInt(req.params.id)));
-    if (!existing) return res.status(404).json({ error: "Empresa não encontrada" });
-    
-    const user = req.user as any;
-    if (!(await canAccessTenant(user, existing.tenantId))) {
-      return res.status(403).json({ error: "Sem permissão" });
-    }
-    
-    const [empresa] = await db.update(tenantEmpresas)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(tenantEmpresas.id, parseInt(req.params.id)))
-      .returning();
-    res.json(empresa);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-router.delete("/empresas/:id", async (req: Request, res: Response) => {
-  try {
-    const [existing] = await db.select().from(tenantEmpresas)
-      .where(eq(tenantEmpresas.id, parseInt(req.params.id)));
-    if (!existing) return res.status(404).json({ error: "Empresa não encontrada" });
-    
-    const user = req.user as any;
-    if (!(await canAccessTenant(user, existing.tenantId))) {
-      return res.status(403).json({ error: "Sem permissão" });
-    }
-    
-    await db.delete(tenantEmpresas).where(eq(tenantEmpresas.id, parseInt(req.params.id)));
-    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

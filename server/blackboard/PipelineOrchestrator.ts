@@ -58,6 +58,7 @@ const ALL_PHASES: PipelinePhase[] = ["design", "codegen", "validation", "staging
 
 class PipelineOrchestrator extends EventEmitter {
   private activeMonitors: Map<number, NodeJS.Timeout> = new Map();
+  private processingMonitors: Set<number> = new Set();
 
   async createPipeline(prompt: string, userId: string = "system", metadata?: any): Promise<XosDevPipeline> {
     const correlationId = randomUUID();
@@ -169,10 +170,14 @@ class PipelineOrchestrator extends EventEmitter {
     if (this.activeMonitors.has(pipelineId)) return;
 
     const interval = setInterval(async () => {
+      if (this.processingMonitors.has(pipelineId)) return;
+      this.processingMonitors.add(pipelineId);
       try {
         await this.checkPhaseProgress(pipelineId, mainTaskId);
       } catch (error) {
         console.error(`[PipelineOrchestrator] Erro no monitor #${pipelineId}:`, error);
+      } finally {
+        this.processingMonitors.delete(pipelineId);
       }
     }, 3000);
 
@@ -381,26 +386,6 @@ class PipelineOrchestrator extends EventEmitter {
           reviewedBy,
           reviewedAt: new Date(),
         }).where(eq(xosStagingChanges.id, change.id));
-      }
-    }
-
-    const schemaFiles = applied.filter(f => f.startsWith("shared/schemas/") && f.endsWith(".ts"));
-    if (schemaFiles.length > 0) {
-      try {
-        const { registerAndMigrate } = await import("../modules/migrator");
-        for (const schemaFile of schemaFiles) {
-          const moduleName = schemaFile.replace("shared/schemas/", "").replace(".ts", "");
-          if (moduleName && moduleName !== "index" && moduleName !== "loader" && !moduleName.startsWith("_")) {
-            const migResult = await registerAndMigrate(moduleName);
-            if (migResult.success) {
-              console.log(`[Pipeline] Módulo ${moduleName}: schema registrado${migResult.migrationApplied ? " + migração aplicada" : ""}`);
-            } else {
-              errors.push(`Migração ${moduleName}: ${migResult.error}`);
-            }
-          }
-        }
-      } catch (migError: any) {
-        console.error("[Pipeline] Erro no migrator:", migError.message);
       }
     }
 

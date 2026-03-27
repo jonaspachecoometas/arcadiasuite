@@ -4,14 +4,17 @@ import { metasetClient } from "./client";
 const METASET_HOST = process.env.METABASE_HOST || "localhost";
 const METASET_PORT = parseInt(process.env.METABASE_PORT || "8088", 10);
 const METASET_URL = `http://${METASET_HOST}:${METASET_PORT}`;
-const ADMIN_EMAIL = process.env.METASET_ADMIN_EMAIL || "admin@arcadia.app";
-const ADMIN_PASSWORD = process.env.METASET_ADMIN_PASSWORD || "Arcadia2026!BI";
+const ADMIN_EMAIL = process.env.METASET_ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.METASET_ADMIN_PASSWORD;
 
 export function registerMetaSetRoutes(app: Express): void {
 
   app.get("/api/bi/metaset/autologin", async (req: Request, res: Response) => {
     try {
       if (!req.isAuthenticated()) return res.status(401).json({ error: "Not authenticated" });
+      if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
+        return res.status(503).json({ error: "MetaSet credentials not configured (METASET_ADMIN_EMAIL / METASET_ADMIN_PASSWORD)" });
+      }
 
       const sessionResp = await fetch(`${METASET_URL}/api/session`, {
         method: "POST",

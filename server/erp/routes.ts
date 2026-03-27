@@ -1,22 +1,11 @@
 import type { Express, Request, Response } from "express";
 import { erpStorage, createErpClient } from "./index";
 import { db } from "../../db/index";
-import { customers, suppliers, products, salesOrders, purchaseOrders, erpSegments, erpConfig, insertErpSegmentSchema, insertErpConfigSchema, persons, personRoles, mobileDevices, posSales, posSaleItems, finAccountsReceivable, tenants, tenantEmpresas, type TenantFeatures } from "@shared/schema";
+import { customers, suppliers, products, salesOrders, purchaseOrders, erpSegments, erpConfig, insertErpSegmentSchema, insertErpConfigSchema, persons, personRoles, mobileDevices, posSales, posSaleItems, finAccountsReceivable } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { soeRuleEngine } from "../soe/rule-engine/index";
 import { soeEventBus } from "../soe/event-bus";
-
-export function registerSoeRoutes(app: Express): void {
-  app.use((req, res, next) => {
-    if (req.url.startsWith("/api/soe/") || req.url === "/api/soe") {
-      req.url = req.url.replace("/api/soe", "/api/erp");
-    }
-    next();
-  });
-
-  registerErpRoutes(app);
-}
 
 export function registerErpRoutes(app: Express): void {
   app.get("/api/erp/connections", async (req: Request, res: Response) => {
@@ -863,23 +852,24 @@ export function registerErpRoutes(app: Express): void {
         return res.status(401).json({ error: "Not authenticated" });
       }
       const tenantId = req.user?.tenantId || 1;
+      const user = req.user as any;
 
-      // SOE Rule Engine — enriquece payload antes de inserir
-      const enriched = await soeRuleEngine.apply("pre_sales_order", req.body, {
-        tenantId,
-        motor: "local",
-      });
-      if (enriched.validationErrors.length > 0) {
-        return res.status(422).json({ error: "Validação SOE falhou", detalhes: enriched.validationErrors });
+      // SOE Rule Engine — aplica regras fiscais e de negócio antes de criar o pedido
+      const { payload: enriched, validationErrors } = await soeRuleEngine.apply(
+        "pre_sales_order",
+        { ...req.body, _tipo: "venda" },
+        { tenantId, empresaId: req.body.empresaId, userId: user?.id, motor: "local" }
+      );
+      if (validationErrors.length > 0) {
+        return res.status(422).json({ error: "Validação falhou", details: validationErrors });
       }
-      const body = enriched.payload;
 
-      const { orderNumber, customerId, orderDate, deliveryDate, status, subtotal, discount, tax, total, paymentMethod, notes } = body;
+      const { orderNumber, customerId, orderDate, deliveryDate, status, subtotal, discount, tax, total, paymentMethod, notes } = enriched;
       const [order] = await db.insert(salesOrders).values({
         tenantId,
         orderNumber, customerId, orderDate, deliveryDate, status, subtotal, discount, tax, total, paymentMethod, notes
       }).returning();
-      res.status(201).json(order);
+      res.status(201).json({ ...order, _rulesApplied: enriched._rulesApplied });
     } catch (error) {
       console.error("Error creating sales order:", error);
       res.status(500).json({ error: "Failed to create sales order" });
@@ -900,7 +890,16 @@ export function registerErpRoutes(app: Express): void {
       if (!updated) {
         return res.status(404).json({ error: "Sales order not found" });
       }
-      res.json({ success: true, order: updated, message: "Pedido confirmado. Lançamentos contábeis gerados." });
+
+      // SOE Event Bus — dispara automações pós-confirmação
+      soeEventBus.emit("venda_confirmada", {
+        tenantId,
+        empresaId: (req.user as any)?.empresaId,
+        motorOrigem: "local",
+        dados: { id, status: "confirmed", ...updated },
+      }).catch((e) => console.error("[SOE] venda_confirmada error:", e.message));
+
+      res.json({ success: true, order: updated, message: "Pedido confirmado. Automações SOE disparadas." });
     } catch (error) {
       console.error("Error confirming sales order:", error);
       res.status(500).json({ error: "Failed to confirm sales order" });
@@ -914,14 +913,16 @@ export function registerErpRoutes(app: Express): void {
       }
       const id = parseInt(req.params.id);
       const tenantId = req.user?.tenantId || 1;
+      const user = req.user as any;
 
-      // SOE Rule Engine — valida e enriquece payload fiscal antes de emitir
-      const enriched = await soeRuleEngine.apply("pre_nfe_emissao", { ...req.body, _pedidoId: id }, {
-        tenantId,
-        motor: "local",
-      });
-      if (enriched.validationErrors.length > 0) {
-        return res.status(422).json({ error: "Validação fiscal SOE falhou", detalhes: enriched.validationErrors });
+      // SOE Rule Engine — aplica regras fiscais antes de gerar a NF-e
+      const { payload: enriched, validationErrors } = await soeRuleEngine.apply(
+        "pre_nfe_emissao",
+        { ...req.body, tipoDocumento: "nfe", _tipo: "venda" },
+        { tenantId, empresaId: user?.empresaId, userId: user?.id, motor: "local" }
+      );
+      if (validationErrors.length > 0) {
+        return res.status(422).json({ error: "Validação fiscal falhou", details: validationErrors });
       }
 
       const [updated] = await db.update(salesOrders)
@@ -935,12 +936,22 @@ export function registerErpRoutes(app: Express): void {
       // SOE Event Bus — dispara lançamentos contábeis automáticos
       soeEventBus.emit("nfe_emitida", {
         tenantId,
-        empresaId: enriched.payload.empresaId || req.body.empresaId,
+        empresaId: user?.empresaId,
         motorOrigem: "local",
-        dados: { ...enriched.payload, ...updated },
-      }).catch((e: any) => console.error("[routes] eventBus nfe_emitida:", e.message));
+        dados: {
+          ...enriched,
+          ...updated,
+          valorTotal: updated.total,
+          dataEmissao: new Date().toISOString(),
+        },
+      }).catch((e) => console.error("[SOE] nfe_emitida error:", e.message));
 
-      res.json({ success: true, order: updated, regrasSoe: enriched.appliedRules, message: "NF-e gerada com sucesso." });
+      res.json({
+        success: true,
+        order: updated,
+        tributacao: enriched.tributacao,
+        message: "NF-e gerada. Lançamentos contábeis sendo processados.",
+      });
     } catch (error) {
       console.error("Error generating NF-e:", error);
       res.status(500).json({ error: "Failed to generate NF-e" });
@@ -997,15 +1008,7 @@ export function registerErpRoutes(app: Express): void {
         return res.status(401).json({ error: "Not authenticated" });
       }
       const tenantId = req.user?.tenantId || 1;
-
-      // SOE Rule Engine — enriquece payload de compra (CFOP, tributação entrada)
-      const enriched = await soeRuleEngine.apply("pre_purchase_order", req.body, {
-        tenantId,
-        motor: "local",
-      });
-      const body = enriched.payload;
-
-      const { orderNumber, supplierId, orderDate, expectedDate, status, subtotal, discount, tax, total, notes } = body;
+      const { orderNumber, supplierId, orderDate, expectedDate, status, subtotal, discount, tax, total, notes } = req.body;
       const [order] = await db.insert(purchaseOrders).values({
         tenantId,
         orderNumber, supplierId, orderDate, expectedDate, status, subtotal, discount, tax, total, notes
@@ -1186,198 +1189,7 @@ export function registerErpRoutes(app: Express): void {
       res.status(500).json({ error: "Failed to save config" });
     }
   });
-
-  // GET /api/erp/tenant/modules - Get current tenant's active modules
-  app.get("/api/erp/tenant/modules", async (req: Request, res: Response) => {
-    try {
-      if (!req.isAuthenticated()) return res.status(401).json({ error: "Not authenticated" });
-      const tenantId = req.user?.tenantId || 1;
-      const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
-      if (!tenant) return res.status(404).json({ error: "Tenant not found" });
-      
-      const defaultFeatures: TenantFeatures = {
-        ide: true, ideMode: 'pro-code', whatsapp: false, whatsappSessions: 0,
-        crm: true, erp: true, bi: false, manus: true, manusTools: [],
-        centralApis: false, centralApisManage: false, comunidades: false,
-        maxChannels: 5, biblioteca: false, bibliotecaPublish: false,
-        suporteN3: false, retail: false, plus: false, fisco: false,
-        cockpit: false, compass: true, production: false, support: false, xosCrm: false
-      };
-      
-      res.json({
-        tenantId: tenant.id,
-        tenantName: tenant.name,
-        plan: tenant.plan,
-        features: tenant.features || defaultFeatures
-      });
-    } catch (error) {
-      console.error("Error fetching tenant modules:", error);
-      res.status(500).json({ error: "Failed to fetch modules" });
-    }
-  });
-
-  // PUT /api/erp/tenant/modules - Update current tenant's modules
-  app.put("/api/erp/tenant/modules", async (req: Request, res: Response) => {
-    try {
-      if (!req.isAuthenticated()) return res.status(401).json({ error: "Not authenticated" });
-      const user = req.user;
-      if (user?.role !== 'admin' && (user as any)?.tenantRole !== 'owner') {
-        return res.status(403).json({ error: "Only admins can manage modules" });
-      }
-      const tenantId = user?.tenantId || 1;
-      
-      const features = req.body.features;
-      if (!features || typeof features !== 'object') {
-        return res.status(400).json({ error: "Invalid features object" });
-      }
-      
-      const [updated] = await db.update(tenants)
-        .set({ features, updatedAt: new Date() })
-        .where(eq(tenants.id, tenantId))
-        .returning();
-      
-      res.json({ tenantId: updated.id, features: updated.features });
-    } catch (error) {
-      console.error("Error updating tenant modules:", error);
-      res.status(500).json({ error: "Failed to update modules" });
-    }
-  });
-
-  // GET /api/erp/sync/status - Get sync status for all motors
-  app.get("/api/erp/sync/status", async (req: Request, res: Response) => {
-    try {
-      if (!req.isAuthenticated()) return res.status(401).json({ error: "Not authenticated" });
-      const tenantId = req.user?.tenantId || 1;
-      
-      const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
-      const features = (tenant?.features as TenantFeatures) || {};
-      
-      const status = {
-        retail: {
-          enabled: features.retail || false,
-          motor: features.plus ? 'plus' : features.erp ? 'erpnext' : 'none',
-          lastSync: null,
-          status: 'idle'
-        },
-        plus: {
-          enabled: features.plus || false,
-          status: 'idle'  
-        },
-        fisco: {
-          enabled: features.fisco || false,
-          status: 'idle'
-        },
-        bi: {
-          enabled: features.bi || false,
-          status: 'idle'
-        }
-      };
-      
-      res.json(status);
-    } catch (error) {
-      console.error("Error fetching sync status:", error);
-      res.status(500).json({ error: "Failed to fetch sync status" });
-    }
-  });
-
-  app.get("/api/erp/empresas", async (req: Request, res: Response) => {
-    try {
-      const tenantId = (req as any).user?.tenantId;
-      if (!tenantId) return res.status(401).json({ error: "Tenant not identified" });
-      const empresas = await db.select().from(tenantEmpresas)
-        .where(and(eq(tenantEmpresas.tenantId, tenantId), eq(tenantEmpresas.status, "active")));
-      res.json(empresas);
-    } catch (error) {
-      console.error("Error fetching empresas:", error);
-      res.status(500).json({ error: "Failed to fetch empresas" });
-    }
-  });
-
-  app.get("/api/erp/empresas/:id", async (req: Request, res: Response) => {
-    try {
-      const tenantId = (req as any).user?.tenantId;
-      if (!tenantId) return res.status(401).json({ error: "Tenant not identified" });
-      const id = parseInt(req.params.id);
-      const [empresa] = await db.select().from(tenantEmpresas)
-        .where(and(eq(tenantEmpresas.id, id), eq(tenantEmpresas.tenantId, tenantId)));
-      if (!empresa) return res.status(404).json({ error: "Empresa not found" });
-      res.json(empresa);
-    } catch (error) {
-      console.error("Error fetching empresa:", error);
-      res.status(500).json({ error: "Failed to fetch empresa" });
-    }
-  });
-
-  app.post("/api/erp/empresas", async (req: Request, res: Response) => {
-    try {
-      const tenantId = (req as any).user?.tenantId;
-      if (!tenantId) return res.status(401).json({ error: "Tenant not identified" });
-      const { razaoSocial, nomeFantasia, cnpj, ie, im, email, phone, tipo, cep, logradouro, numero, complemento, bairro, cidade, uf, codigoIbge, regimeTributario } = req.body;
-      if (!razaoSocial || !cnpj) return res.status(400).json({ error: "razaoSocial and cnpj required" });
-      const [empresa] = await db.insert(tenantEmpresas).values({
-        tenantId,
-        razaoSocial,
-        nomeFantasia: nomeFantasia || null,
-        cnpj,
-        ie: ie || null,
-        im: im || null,
-        email: email || null,
-        phone: phone || null,
-        tipo: tipo || "filial",
-        cep: cep || null,
-        logradouro: logradouro || null,
-        numero: numero || null,
-        complemento: complemento || null,
-        bairro: bairro || null,
-        cidade: cidade || null,
-        uf: uf || null,
-        codigoIbge: codigoIbge || null,
-        regimeTributario: regimeTributario || null,
-      }).returning();
-      res.status(201).json(empresa);
-    } catch (error) {
-      console.error("Error creating empresa:", error);
-      res.status(500).json({ error: "Failed to create empresa" });
-    }
-  });
-
-  app.put("/api/erp/empresas/:id", async (req: Request, res: Response) => {
-    try {
-      const tenantId = (req as any).user?.tenantId;
-      if (!tenantId) return res.status(401).json({ error: "Tenant not identified" });
-      const id = parseInt(req.params.id);
-      const [existing] = await db.select().from(tenantEmpresas)
-        .where(and(eq(tenantEmpresas.id, id), eq(tenantEmpresas.tenantId, tenantId)));
-      if (!existing) return res.status(404).json({ error: "Empresa not found" });
-      const { razaoSocial, nomeFantasia, cnpj, ie, im, email, phone, tipo, status, cep, logradouro, numero, complemento, bairro, cidade, uf, codigoIbge, regimeTributario } = req.body;
-      const [updated] = await db.update(tenantEmpresas)
-        .set({
-          ...(razaoSocial !== undefined && { razaoSocial }),
-          ...(nomeFantasia !== undefined && { nomeFantasia }),
-          ...(cnpj !== undefined && { cnpj }),
-          ...(ie !== undefined && { ie }),
-          ...(im !== undefined && { im }),
-          ...(email !== undefined && { email }),
-          ...(phone !== undefined && { phone }),
-          ...(tipo !== undefined && { tipo }),
-          ...(status !== undefined && { status }),
-          ...(cep !== undefined && { cep }),
-          ...(logradouro !== undefined && { logradouro }),
-          ...(numero !== undefined && { numero }),
-          ...(complemento !== undefined && { complemento }),
-          ...(bairro !== undefined && { bairro }),
-          ...(cidade !== undefined && { cidade }),
-          ...(uf !== undefined && { uf }),
-          ...(codigoIbge !== undefined && { codigoIbge }),
-          ...(regimeTributario !== undefined && { regimeTributario }),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(tenantEmpresas.id, id), eq(tenantEmpresas.tenantId, tenantId)))
-        .returning();
-      res.json(updated);
-    } catch (error) {
-      console.error("Error updating empresa:", error);
-      res.status(500).json({ error: "Failed to update empresa" });
-    }
-  });
 }
+// SOE routes — placeholder
+
+export function registerSoeRoutes(_app: Express): void {}

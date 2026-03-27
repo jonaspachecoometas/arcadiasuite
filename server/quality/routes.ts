@@ -13,11 +13,20 @@ import { eq, desc, and, gte, lte, like, or, sql, isNull } from "drizzle-orm";
 
 const router = Router();
 
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  next();
+}
+
+router.use(requireAuth);
+
 // ========== AMOSTRAS (RF-QC01) ==========
 
 router.get("/samples", async (req: Request, res: Response) => {
   try {
-    const { projectId, status, startDate, endDate, limit = 50 } = req.query;
+    const { projectId, status, startDate, endDate, limit = 50, offset = 0 } = req.query;
     
     let conditions = [];
     if (projectId) conditions.push(eq(qualitySamples.projectId, Number(projectId)));
@@ -29,7 +38,7 @@ router.get("/samples", async (req: Request, res: Response) => {
       .from(qualitySamples)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(qualitySamples.createdAt))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: samples });
   } catch (error) {
@@ -82,7 +91,7 @@ router.put("/samples/:id", async (req: Request, res: Response) => {
 
 router.get("/lab-reports", async (req: Request, res: Response) => {
   try {
-    const { sampleId, laboratoryId, status, limit = 50 } = req.query;
+    const { sampleId, laboratoryId, status, limit = 50, offset = 0 } = req.query;
     
     let conditions = [];
     if (sampleId) conditions.push(eq(qualityLabReports.sampleId, Number(sampleId)));
@@ -93,7 +102,7 @@ router.get("/lab-reports", async (req: Request, res: Response) => {
       .from(qualityLabReports)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(qualityLabReports.createdAt))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: reports });
   } catch (error) {
@@ -130,7 +139,7 @@ router.put("/lab-reports/:id", async (req: Request, res: Response) => {
 
 router.get("/non-conformities", async (req: Request, res: Response) => {
   try {
-    const { projectId, status, type, severity, limit = 50 } = req.query;
+    const { projectId, status, type, severity, limit = 50, offset = 0 } = req.query;
     
     let conditions = [];
     if (projectId) conditions.push(eq(qualityNonConformities.projectId, Number(projectId)));
@@ -142,7 +151,7 @@ router.get("/non-conformities", async (req: Request, res: Response) => {
       .from(qualityNonConformities)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(qualityNonConformities.createdAt))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: rncs });
   } catch (error) {
@@ -201,7 +210,7 @@ router.post("/non-conformities/:id/close", async (req: Request, res: Response) =
 
 router.get("/documents", async (req: Request, res: Response) => {
   try {
-    const { type, category, status, limit = 50 } = req.query;
+    const { type, category, status, limit = 50, offset = 0 } = req.query;
     
     let conditions = [];
     if (type) conditions.push(eq(qualityDocuments.type, type as string));
@@ -212,7 +221,7 @@ router.get("/documents", async (req: Request, res: Response) => {
       .from(qualityDocuments)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(qualityDocuments.createdAt))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: docs });
   } catch (error) {
@@ -302,7 +311,7 @@ router.get("/documents/:id/revisions", async (req: Request, res: Response) => {
 
 router.get("/field-forms", async (req: Request, res: Response) => {
   try {
-    const { projectId, formType, status, limit = 50 } = req.query;
+    const { projectId, formType, status, limit = 50, offset = 0 } = req.query;
     
     let conditions = [];
     if (projectId) conditions.push(eq(qualityFieldForms.projectId, Number(projectId)));
@@ -313,7 +322,7 @@ router.get("/field-forms", async (req: Request, res: Response) => {
       .from(qualityFieldForms)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(qualityFieldForms.createdAt))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: forms });
   } catch (error) {
@@ -361,7 +370,7 @@ router.get("/training-matrix", async (req: Request, res: Response) => {
       .from(qualityTrainingMatrix)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(qualityTrainingMatrix.createdAt))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: trainings });
   } catch (error) {
@@ -403,7 +412,7 @@ router.get("/training-matrix/expiring", async (req: Request, res: Response) => {
 
 router.get("/field-expenses", async (req: Request, res: Response) => {
   try {
-    const { projectId, responsibleId, status, category, limit = 50 } = req.query;
+    const { projectId, responsibleId, status, category, limit = 50, offset = 0 } = req.query;
     
     let conditions = [];
     if (projectId) conditions.push(eq(fieldExpenses.projectId, Number(projectId)));
@@ -415,7 +424,7 @@ router.get("/field-expenses", async (req: Request, res: Response) => {
       .from(fieldExpenses)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(fieldExpenses.createdAt))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: expenses });
   } catch (error) {
@@ -493,7 +502,7 @@ router.post("/field-expenses/:id/reject", async (req: Request, res: Response) =>
 
 router.get("/homologated-suppliers", async (req: Request, res: Response) => {
   try {
-    const { status, certification, limit = 50 } = req.query;
+    const { status, certification, limit = 50, offset = 0 } = req.query;
     
     let conditions = [eq(suppliers.isHomologated, 1)];
     if (status) conditions.push(eq(suppliers.homologationStatus, status as string));
@@ -502,7 +511,7 @@ router.get("/homologated-suppliers", async (req: Request, res: Response) => {
       .from(suppliers)
       .where(and(...conditions))
       .orderBy(desc(suppliers.qualityScore))
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: suppliersList });
   } catch (error) {
@@ -631,7 +640,7 @@ router.get("/services", async (req: Request, res: Response) => {
       .from(environmentalServices)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(environmentalServices.category, environmentalServices.name)
-      .limit(Number(limit));
+      .limit(Number(limit)).offset(Number(offset));
     
     return res.json({ data: services });
   } catch (error) {

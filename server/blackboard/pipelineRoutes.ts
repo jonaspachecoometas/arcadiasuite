@@ -1,14 +1,11 @@
 import { Router, Request, Response } from "express";
 import { pipelineOrchestrator } from "./PipelineOrchestrator";
-import { toolManager } from "../autonomous/tools/ToolManager";
 import { z } from "zod";
 
 const router = Router();
 
 const createPipelineSchema = z.object({
   prompt: z.string().min(5, "O prompt deve ter pelo menos 5 caracteres"),
-  mode: z.enum(["plan", "act"]).optional().default("act"),
-  planContext: z.string().optional(),
   metadata: z.record(z.any()).optional(),
   budget: z.object({
     maxTokens: z.number().optional(),
@@ -24,62 +21,16 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: parsed.error.errors[0].message });
     }
 
-    const mode = parsed.data.mode || "act";
     const userId = (req.user as any)?.id || "anonymous";
-    const metadata = { 
-      ...(parsed.data.metadata || {}), 
-      budget: parsed.data.budget,
-      mode,
-      planContext: parsed.data.planContext || null,
-    };
-
-    let prompt = parsed.data.prompt;
-    if (mode === "plan") {
-      prompt = `[MODO PLANEJAMENTO] Analise o projeto e gere um plano detalhado de implementação. NÃO modifique arquivos. Use apenas ferramentas de leitura (read_file, search_code, list_directory). Gere um documento implementation_plan.md com:\n1. Análise do estado atual\n2. Arquivos que precisam ser criados/modificados\n3. Estratégia passo-a-passo\n4. Dependências e riscos\n\nSolicitação: ${prompt}`;
-    } else if (parsed.data.planContext) {
-      prompt = `[MODO EXECUÇÃO] Siga o plano de implementação abaixo e execute as mudanças:\n\n--- PLANO ---\n${parsed.data.planContext}\n--- FIM DO PLANO ---\n\nSolicitação original: ${prompt}`;
-    }
-
-    const pipeline = await pipelineOrchestrator.createPipeline(prompt, userId, metadata);
-    
-    toolManager.setActivePipeline(pipeline.id);
-    toolManager.setPlanMode(mode === "plan", pipeline.id);
-    
+    const metadata = { ...(parsed.data.metadata || {}), budget: parsed.data.budget };
+    const pipeline = await pipelineOrchestrator.createPipeline(parsed.data.prompt, userId, metadata);
     const started = await pipelineOrchestrator.startPipeline(pipeline.id);
 
-    res.json({ success: true, pipeline: started, mode });
+    res.json({ success: true, pipeline: started });
   } catch (error: any) {
     console.error("[Pipeline] Erro ao criar:", error);
     res.status(500).json({ success: false, error: error.message });
   }
-});
-
-router.get("/agent-terminal", async (req: Request, res: Response) => {
-  try {
-    const pipelineId = req.query.pipelineId ? parseInt(req.query.pipelineId as string) : undefined;
-    const logs = toolManager.getCommandLog(pipelineId);
-    res.json({ success: true, logs });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-router.get("/mode", async (req: Request, res: Response) => {
-  const pipelineId = req.query.pipelineId ? parseInt(req.query.pipelineId as string) : undefined;
-  if (pipelineId !== undefined) {
-    toolManager.setActivePipeline(pipelineId);
-  }
-  res.json({ success: true, planMode: toolManager.planMode, activePipeline: toolManager.activePipelineId });
-});
-
-router.post("/mode", async (req: Request, res: Response) => {
-  const { mode, pipelineId } = req.body;
-  if (mode !== "plan" && mode !== "act") {
-    return res.status(400).json({ success: false, error: "Mode must be 'plan' or 'act'" });
-  }
-  const pid = pipelineId ? parseInt(pipelineId) : undefined;
-  toolManager.setPlanMode(mode === "plan", pid);
-  res.json({ success: true, mode, planMode: toolManager.planMode });
 });
 
 router.get("/", async (req: Request, res: Response) => {
@@ -233,31 +184,6 @@ router.get("/:id/stream", async (req: Request, res: Response) => {
     pipelineOrchestrator.off("pipeline:failed", onFailed);
     pipelineOrchestrator.off("pipeline:rolled_back", onRolledBack);
   });
-});
-
-router.get("/modules/status", async (_req: Request, res: Response) => {
-  try {
-    const { getModuleStatus, listModuleSchemas } = await import("../modules/migrator");
-    const { getLoadedModules } = await import("../modules/loader");
-
-    const status = await getModuleStatus();
-    const schemas = await listModuleSchemas();
-    const loadedRoutes = getLoadedModules();
-
-    res.json({
-      success: true,
-      modules: status,
-      registeredSchemas: schemas,
-      loadedRoutes,
-      allowedPaths: {
-        schemas: "shared/schemas/{moduleName}.ts",
-        routes: "server/modules/{moduleName}.ts",
-        pages: "client/src/pages/{ModuleName}.tsx",
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
 });
 
 export default router;

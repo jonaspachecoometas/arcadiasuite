@@ -4,6 +4,15 @@ import { sql } from "drizzle-orm";
 
 const router = Router();
 
+function requireAuth(req: any, res: any, next: any) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  next();
+}
+
+router.use(requireAuth);
+
 router.get("/courses", async (req: Request, res: Response) => {
   try {
     const { category, featured, published } = req.query;

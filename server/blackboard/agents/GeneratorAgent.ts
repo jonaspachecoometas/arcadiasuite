@@ -34,27 +34,6 @@ Você pode ler arquivos existentes para manter consistência de estilo.
 5. Use shadcn/ui para componentes de UI
 6. Adicione data-testid em elementos interativos
 
-## SISTEMA MODULAR (IMPORTANTE!)
-O projeto usa um sistema modular. SEMPRE crie arquivos nas pastas modulares:
-
-### Schemas de Banco → shared/schemas/{nomeModulo}.ts
-- NÃO modificar shared/schema.ts (protegido!)
-- NÃO importar de @shared/schema (referência circular!)
-- Importar: import { sql } from "drizzle-orm"; import { pgTable, text, varchar, serial, integer, timestamp, boolean, jsonb, numeric } from "drizzle-orm/pg-core";
-- Importar: import { createInsertSchema } from "drizzle-zod"; import { z } from "zod";
-- Para referências a users: usar varchar("user_id") SEM .references()
-- Prefixar tabelas: bsc_objectives, fin_transactions, etc.
-- Exportar: tabelas + insertSchemas + types
-
-### Rotas de API → server/modules/{nomeModulo}.ts
-- NÃO modificar server/routes.ts (protegido!)
-- Exportar default um Router do Express
-- Rotas montadas automaticamente em /api/modules/{nomeModulo}
-- Import db: import { db } from "../../db";
-- Import schemas: import { ... } from "@shared/schemas/{nomeModulo}";
-
-### Páginas React → client/src/pages/{NomeModulo}.tsx
-
 ## Formato de Saída
 Para cada arquivo, retorne JSON:
 {
@@ -138,8 +117,8 @@ ${schemaRef}
 ${routesRef}
 
 Gere arquivos completos e funcionais para:
-1. Schema do banco (se necessário) - CRIAR em shared/schemas/{moduleName}.ts (NÃO editar schema.ts!)
-2. Rotas da API - CRIAR em server/modules/{moduleName}.ts (NÃO editar routes.ts!)
+1. Schema do banco de dados (se necessário) - adicionar ao shared/schema.ts
+2. Rotas da API - novo arquivo em server/ ou adicionar a routes.ts
 3. Componente principal React - em client/src/pages/
 
 Retorne em formato JSON com a estrutura:

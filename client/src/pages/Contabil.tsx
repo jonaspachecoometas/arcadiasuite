@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { SupersetDashboard } from "@/components/SupersetDashboard";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -392,13 +391,12 @@ export default function Contabil() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="plano" data-testid="tab-plano">Plano de Contas</TabsTrigger>
             <TabsTrigger value="lancamentos" data-testid="tab-lancamentos">Lançamentos</TabsTrigger>
             <TabsTrigger value="centros" data-testid="tab-centros">Centros de Custo</TabsTrigger>
             <TabsTrigger value="sped" data-testid="tab-sped">SPED ECD</TabsTrigger>
-            <TabsTrigger value="analise" data-testid="tab-analise">Análise BI</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-4">
@@ -786,9 +784,6 @@ export default function Contabil() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-          <TabsContent value="analise">
-            <SupersetDashboard dashboardId="dre-mensal" />
           </TabsContent>
         </Tabs>
 

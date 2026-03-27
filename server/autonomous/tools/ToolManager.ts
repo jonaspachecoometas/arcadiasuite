@@ -4,109 +4,10 @@ import { db } from "../../../db/index";
 import { xosToolRegistry } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
-const WRITE_TOOLS = new Set([
-  "write_file",
-  "github_commit",
-  "git_local_commit",
-  "run_command",
-]);
-
-const READ_ONLY_TOOLS = new Set([
-  "read_file",
-  "list_directory",
-  "search_code",
-  "git_status",
-  "analyze_external_repo",
-  "read_external_file",
-  "typecheck",
-  "metaset.query",
-  "metaset.list_tables",
-  "metaset.table_fields",
-  "metaset.list_questions",
-  "metaset.list_dashboards",
-  "metaset.health",
-]);
-
-interface PipelineContext {
-  planMode: boolean;
-  commandLog: Array<{ command: string; output: string; timestamp: string; success: boolean }>;
-}
-
 export class ToolManager {
   private tools: Map<string, BaseTool> = new Map();
   private categories: Map<string, string[]> = new Map();
   private governanceSynced: boolean = false;
-  private _activePipelineId: number | null = null;
-  private _pipelineContexts: Map<number, PipelineContext> = new Map();
-  private _globalCommandLog: Array<{ command: string; output: string; timestamp: string; success: boolean; pipelineId?: number }> = [];
-
-  private getPipelineContext(pipelineId?: number): PipelineContext | null {
-    const id = pipelineId ?? this._activePipelineId;
-    if (id === null) return null;
-    if (!this._pipelineContexts.has(id)) {
-      this._pipelineContexts.set(id, { planMode: false, commandLog: [] });
-    }
-    return this._pipelineContexts.get(id)!;
-  }
-
-  setActivePipeline(pipelineId: number | null): void {
-    this._activePipelineId = pipelineId;
-  }
-
-  get activePipelineId(): number | null {
-    return this._activePipelineId;
-  }
-
-  get planMode(): boolean {
-    const ctx = this.getPipelineContext();
-    return ctx?.planMode ?? false;
-  }
-
-  setPlanMode(enabled: boolean, pipelineId?: number): void {
-    const id = pipelineId ?? this._activePipelineId;
-    if (id !== null && id !== undefined) {
-      const ctx = this.getPipelineContext(id);
-      if (ctx) ctx.planMode = enabled;
-    }
-    console.log(`[ToolManager] Plan Mode pipeline=${id}: ${enabled ? "ATIVADO" : "DESATIVADO"}`);
-  }
-
-  isWriteTool(toolName: string): boolean {
-    return WRITE_TOOLS.has(toolName);
-  }
-
-  getCommandLog(pipelineId?: number): typeof this._globalCommandLog {
-    if (pipelineId !== undefined) {
-      return this._globalCommandLog.filter(l => l.pipelineId === pipelineId);
-    }
-    return [...this._globalCommandLog];
-  }
-
-  clearCommandLog(pipelineId?: number): void {
-    if (pipelineId !== undefined) {
-      this._globalCommandLog = this._globalCommandLog.filter(l => l.pipelineId !== pipelineId);
-    } else {
-      this._globalCommandLog = [];
-    }
-  }
-
-  addCommandLog(entry: { command: string; output: string; timestamp: string; success: boolean }): void {
-    this._globalCommandLog.push({ ...entry, pipelineId: this._activePipelineId ?? undefined });
-    if (this._globalCommandLog.length > 500) {
-      this._globalCommandLog = this._globalCommandLog.slice(-250);
-    }
-  }
-
-  cleanupPipeline(pipelineId: number): void {
-    this._pipelineContexts.delete(pipelineId);
-    this._globalCommandLog = this._globalCommandLog.filter(l => l.pipelineId !== pipelineId);
-    if (this._activePipelineId === pipelineId) this._activePipelineId = null;
-  }
-
-  getToolsForMode(mode: "plan" | "act"): ToolDefinition[] {
-    if (mode === "act") return this.listTools();
-    return this.listTools().filter(t => !WRITE_TOOLS.has(t.name));
-  }
 
   register(tool: BaseTool): void {
     this.tools.set(tool.name, tool);
@@ -188,14 +89,6 @@ export class ToolManager {
       };
     }
 
-    if (this.planMode && WRITE_TOOLS.has(toolName)) {
-      return {
-        success: false,
-        result: `[PLAN MODE] Ferramenta "${toolName}" bloqueada. Em modo planejamento, apenas ferramentas de leitura são permitidas. Analise o código e gere um plano detalhado.`,
-        error: `PLAN_MODE_BLOCKED: ${toolName}`,
-      };
-    }
-
     if (agentName) {
       const rbacCheck = await this.checkRBAC(toolName, agentName);
       if (!rbacCheck.allowed) {
@@ -232,15 +125,6 @@ export class ToolManager {
       const duration = Date.now() - startTime;
 
       console.log(`[ToolManager] ${toolName} executado em ${duration}ms`);
-
-      if (toolName === "run_command" || toolName === "typecheck") {
-        this.addCommandLog({
-          command: params.command || toolName,
-          output: result.result?.slice(0, 5000) || "",
-          timestamp: new Date().toISOString(),
-          success: result.success,
-        });
-      }
 
       if (agentName) {
         await governanceService.recordAudit({

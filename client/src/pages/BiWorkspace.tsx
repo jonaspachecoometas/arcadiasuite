@@ -1,5 +1,5 @@
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,9 +47,9 @@ import {
   X,
   Sparkles,
   MessageSquare,
-  Brain,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { SupersetDashboard } from "@/components/SupersetDashboard";
 import {
   Dialog,
   DialogContent,
@@ -81,8 +81,73 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { SupersetDashboard } from "@/components/SupersetDashboard";
-import { MiroFlowControl } from "@/components/MiroFlowControl";
+
+// ── Componente da aba Insights (Apache Superset) ──────────────────────────────
+function SupersetAdvancedTab() {
+  const [selectedDashboard, setSelectedDashboard] = useState<string>("");
+  const [dashboards, setDashboards] = useState<Array<{ id: string; title: string }>>([]);
+
+  useEffect(() => {
+    fetch("/api/superset/dashboards", { credentials: "include" })
+      .then(r => r.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setDashboards(data.map((d: any) => ({ id: String(d.id), title: d.dashboard_title || d.title })));
+          if (data.length > 0) setSelectedDashboard(String(data[0].id));
+        }
+      })
+      .catch(() => setDashboards([]));
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[#1f334d]">Arcádia Insights — Apache Superset</h2>
+          <p className="text-sm text-gray-500">SQL Lab avançado, 50+ tipos de gráfico, dashboards interativos</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {dashboards.length > 0 && (
+            <select
+              value={selectedDashboard}
+              onChange={e => setSelectedDashboard(e.target.value)}
+              className="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white text-[#1f334d] focus:outline-none focus:ring-2 focus:ring-[#c89b3c]"
+            >
+              {dashboards.map(d => (
+                <option key={d.id} value={d.id}>{d.title}</option>
+              ))}
+            </select>
+          )}
+          <a
+            href="/superset"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-[#1f334d] text-white rounded-lg hover:bg-[#2a4466] transition-colors text-sm"
+          >
+            <ArrowRight className="w-4 h-4" /> Abrir completo
+          </a>
+        </div>
+      </div>
+
+      {selectedDashboard ? (
+        <SupersetDashboard
+          dashboardId={selectedDashboard}
+          height="calc(100vh - 320px)"
+          showOpenLink={false}
+        />
+      ) : (
+        <div className="rounded-xl overflow-hidden border border-[#c89b3c]/20 bg-white shadow-sm" style={{ height: "calc(100vh - 320px)" }}>
+          <iframe
+            src="/superset"
+            className="w-full h-full border-0"
+            title="Arcádia Insights — Apache Superset"
+            allow="fullscreen"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface BiStats {
   dataSources: number;
@@ -2895,9 +2960,6 @@ export default function BiWorkspace() {
               <TabsTrigger value="advanced" className="data-[state=active]:bg-[#c89b3c] data-[state=active]:text-[#1f334d] text-white/70">
                 <Settings className="w-4 h-4 mr-2" /> Insights
               </TabsTrigger>
-              <TabsTrigger value="cientifico" className="data-[state=active]:bg-[#c89b3c] data-[state=active]:text-[#1f334d] text-white/70">
-                <Brain className="w-4 h-4 mr-2" /> Científico
-              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="mt-0">
@@ -2922,27 +2984,8 @@ export default function BiWorkspace() {
               <StagingTab />
             </TabsContent>
             <TabsContent value="advanced" className="mt-0">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-[#1f334d]">Arcádia Insights — Apache Superset</h2>
-                    <p className="text-sm text-gray-500">SQL Lab avançado, 50+ tipos de gráfico, dashboards interativos</p>
-                  </div>
-                  <a
-                    href="https://bi.onboardbi.com.br"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#1f334d] text-white rounded-lg hover:bg-[#2a4466] transition-colors text-sm"
-                    data-testid="link-open-superset-external"
-                  >
-                    <ArrowRight className="w-4 h-4" /> Abrir em Nova Aba
-                  </a>
-                </div>
-                <SupersetDashboard dashboardId="executive-summary" height="calc(100vh - 320px)" />
-              </div>
-            </TabsContent>
-            <TabsContent value="cientifico" className="mt-0">
-              <MiroFlowControl />
+              <SupersetAdvancedTab />
+
             </TabsContent>
           </Tabs>
         </div>

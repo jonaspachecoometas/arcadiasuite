@@ -9,6 +9,7 @@ import { SoeMotorProvider } from "@/contexts/SoeMotorContext";
 import { ProtectedRoute } from "@/lib/protected-route";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KnowledgeCollectorInit } from "@/components/KnowledgeCollectorInit";
+import { OpenClawWidget } from "@/components/openclaw/OpenClawWidget";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 
@@ -70,8 +71,6 @@ const XosPipeline = lazy(() => import("@/pages/XosPipeline"));
 const XosSupervisor = lazy(() => import("@/pages/XosSupervisor"));
 const XosReports = lazy(() => import("@/pages/XosReports"));
 const XosProtocols = lazy(() => import("@/pages/XosProtocols"));
-const Skills = lazy(() => import("@/pages/Skills"));
-const AutomationCenter = lazy(() => import("@/pages/AutomationCenter"));
 
 
 function LoadingFallback() {
@@ -148,8 +147,6 @@ function Router() {
       <ProtectedRoute path="/page-builder" component={PageBuilder} />
       <ProtectedRoute path="/migration" component={Migration} />
       <ProtectedRoute path="/dev-center" component={DevCenter} />
-      <ProtectedRoute path="/skills" component={Skills} />
-      <ProtectedRoute path="/automations-center" component={AutomationCenter} />
       <ProtectedRoute path="/page/:id" component={WorkspacePage} />
       <ProtectedRoute path="/app/:id" component={AppViewer} />
       <Route path="/auth" component={AuthPage} />
@@ -168,6 +165,7 @@ function App() {
             <KnowledgeCollectorInit />
             <Toaster />
             <CommandPalette />
+            <OpenClawWidget />
             <Router />
           </TooltipProvider>
         </SoeMotorProvider>

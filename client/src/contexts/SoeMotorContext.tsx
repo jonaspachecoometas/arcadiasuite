@@ -1,63 +1,25 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 
-export type SoeMotor = "plus" | "erpnext";
-
-interface SoeMotorContextType {
-  motor: SoeMotor;
-  setMotor: (motor: SoeMotor) => void;
-  usePlus: boolean;
-  useERPNext: boolean;
-  getApiUrl: (localPath: string, plusPath: string, erpnextPath?: string) => string;
-  profile: SoeMotor;
-  setProfile: (motor: SoeMotor) => void;
+interface SoeMotorContextValue {
+  activeCompany: string | null;
+  setActiveCompany: (id: string | null) => void;
 }
 
-const SoeMotorCtx = createContext<SoeMotorContextType | null>(null);
+const SoeMotorContext = createContext<SoeMotorContextValue>({
+  activeCompany: null,
+  setActiveCompany: () => {},
+});
 
 export function SoeMotorProvider({ children }: { children: ReactNode }) {
-  const [motor, setMotorState] = useState<SoeMotor>(() => {
-    const saved = localStorage.getItem("arcadia_soe_motor") || localStorage.getItem("arcadia_erp_profile");
-    return (saved as SoeMotor) || "plus";
-  });
-
-  const setMotor = (newMotor: SoeMotor) => {
-    setMotorState(newMotor);
-    localStorage.setItem("arcadia_soe_motor", newMotor);
-    localStorage.setItem("arcadia_erp_profile", newMotor);
-  };
-
-  const usePlus = motor === "plus";
-  const useERPNext = motor === "erpnext";
-
-  const getApiUrl = (localPath: string, plusPath: string, erpnextPath?: string): string => {
-    if (usePlus) {
-      return `/plus/api${plusPath}`;
-    }
-    if (useERPNext && erpnextPath) {
-      return erpnextPath;
-    }
-    return localPath;
-  };
+  const [activeCompany, setActiveCompany] = useState<string | null>(null);
 
   return (
-    <SoeMotorCtx.Provider value={{ motor, setMotor, usePlus, useERPNext, getApiUrl, profile: motor, setProfile: setMotor }}>
+    <SoeMotorContext.Provider value={{ activeCompany, setActiveCompany }}>
       {children}
-    </SoeMotorCtx.Provider>
+    </SoeMotorContext.Provider>
   );
 }
 
 export function useSoeMotor() {
-  const context = useContext(SoeMotorCtx);
-  if (!context) {
-    throw new Error("useSoeMotor must be used within SoeMotorProvider");
-  }
-  return context;
+  return useContext(SoeMotorContext);
 }
-
-export function useErpProfile() {
-  const ctx = useSoeMotor();
-  return ctx;
-}
-
-export type ErpProfile = SoeMotor;
-export const ErpProfileProvider = SoeMotorProvider;

@@ -14,19 +14,11 @@ const BLOCKED_FILES = ['package.json', 'package-lock.json', '.env', 'drizzle.con
 const PROTECTED_PATHS = [
   'server/routes.ts',
   'shared/schema.ts', 
-  'shared/schemas/index.ts',
-  'shared/schemas/loader.ts',
-  'server/modules/loader.ts',
   'client/src/App.tsx',
   'client/src/main.tsx',
   'server/index.ts',
   'server/storage.ts',
   'db/index.ts',
-];
-
-const ALLOWED_MODULE_DIRS = [
-  'shared/schemas/',
-  'server/modules/',
 ];
 
 export class WriteFileTool extends BaseTool {
@@ -61,6 +53,7 @@ export class WriteFileTool extends BaseTool {
       return this.formatError(`Arquivo protegido: ${fileName}`);
     }
 
+    // Bloquear sobrescrita de arquivos críticos do sistema
     if (PROTECTED_PATHS.includes(filePath)) {
       return this.formatError(`Arquivo crítico protegido - não pode ser sobrescrito: ${filePath}`);
     }

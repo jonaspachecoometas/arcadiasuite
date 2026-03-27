@@ -137,12 +137,12 @@ export default function EngineeringHub() {
             {isErpConnected ? (
               <Badge className="bg-green-100 text-green-700 border-green-300 flex items-center gap-1.5 px-3 py-1.5">
                 <Link2 className="h-3.5 w-3.5" />
-                Sincronizado com Arcádia SOE
+                Sincronizado com Arcádia ERP
               </Badge>
             ) : (
               <Badge variant="secondary" className="flex items-center gap-1.5 px-3 py-1.5">
                 <AlertTriangle className="h-3.5 w-3.5" />
-                Arcádia SOE não conectado
+                Arcádia ERP não conectado
               </Badge>
             )}
             <Button variant="outline" size="sm" data-testid="btn-refresh-engineering">

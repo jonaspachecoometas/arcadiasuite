@@ -110,7 +110,7 @@ export default function TradeInForm({ onClose, onSave, initialEvaluation, custom
   useEffect(() => {
     const loadPersons = async () => {
       try {
-        const res = await fetch("/api/soe/persons", { credentials: "include" });
+        const res = await fetch("/api/erp/persons", { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
           setPersonsList(data);

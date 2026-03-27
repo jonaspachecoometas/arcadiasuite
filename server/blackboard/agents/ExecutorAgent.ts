@@ -35,9 +35,6 @@ const PROTECTED_FILES = [
   "server/storage.ts",
   "server/db.ts",
   "shared/schema.ts",
-  "shared/schemas/index.ts",
-  "shared/schemas/loader.ts",
-  "server/modules/loader.ts",
   "client/src/App.tsx",
   "client/src/main.tsx",
   "client/src/pages/Cockpit.tsx",
@@ -48,20 +45,7 @@ const PROTECTED_FILES = [
   "tsconfig.json",
   "vite.config.ts",
   "drizzle.config.ts",
-  "db/index.ts",
 ];
-
-const ALLOWED_MODULE_DIRS = [
-  "shared/schemas/",
-  "server/modules/",
-];
-
-export function isModuleFile(filePath: string): boolean {
-  return ALLOWED_MODULE_DIRS.some(dir => filePath.startsWith(dir)) &&
-         !PROTECTED_FILES.includes(filePath) &&
-         !filePath.startsWith("shared/schemas/_") &&
-         !filePath.startsWith("server/modules/_");
-}
 
 export class ExecutorAgent extends BaseBlackboardAgent {
   constructor() {

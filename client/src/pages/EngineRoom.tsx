@@ -29,26 +29,8 @@ import {
   HardDrive,
   Workflow,
   Users,
-  Brain,
-  Sparkles,
-  Search,
-  Code,
-  Terminal,
-  Globe,
-  Shield,
-  ArrowRight,
-  Layers,
-  Network,
-  X,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 
 interface EngineStatus {
   name: string;
@@ -85,7 +67,6 @@ interface EngineRoomData {
 }
 
 const ENGINE_ICONS: Record<string, any> = {
-  "manus-ia": Brain,
   "plus": ShoppingCart,
   "contabil": Calculator,
   "fisco": FileText,
@@ -107,18 +88,13 @@ const STATUS_CONFIG = {
   error: { icon: AlertCircle, color: "text-amber-400", bg: "bg-amber-500/10", label: "Erro" },
 };
 
-function EngineCard({ engine, onClick }: { engine: EngineStatus; onClick?: () => void }) {
+function EngineCard({ engine }: { engine: EngineStatus }) {
   const statusConf = STATUS_CONFIG[engine.status];
   const StatusIcon = statusConf.icon;
   const EngineIcon = ENGINE_ICONS[engine.name] || Server;
-  const isClickable = !!onClick;
 
   return (
-    <Card
-      data-testid={`engine-card-${engine.name}`}
-      className={`bg-[#1a1a2e] border-[#2a2a4a] hover:border-[#3a3a5a] transition-all ${isClickable ? "cursor-pointer hover:shadow-lg hover:shadow-violet-500/5 hover:border-violet-500/30" : ""}`}
-      onClick={onClick}
-    >
+    <Card data-testid={`engine-card-${engine.name}`} className="bg-[#1a1a2e] border-[#2a2a4a] hover:border-[#3a3a5a] transition-all">
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -130,16 +106,9 @@ function EngineCard({ engine, onClick }: { engine: EngineStatus; onClick?: () =>
               <p className="text-xs text-gray-400">{engine.description}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {isClickable && (
-              <Badge variant="outline" className="border-violet-500/30 text-violet-400 bg-violet-500/5 text-[10px]">
-                Clique para detalhes
-              </Badge>
-            )}
-            <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full ${statusConf.bg}`}>
-              <StatusIcon className={`w-3.5 h-3.5 ${statusConf.color}`} />
-              <span className={`text-xs font-medium ${statusConf.color}`}>{statusConf.label}</span>
-            </div>
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full ${statusConf.bg}`}>
+            <StatusIcon className={`w-3.5 h-3.5 ${statusConf.color}`} />
+            <span className={`text-xs font-medium ${statusConf.color}`}>{statusConf.label}</span>
           </div>
         </div>
 
@@ -188,208 +157,6 @@ function EngineCard({ engine, onClick }: { engine: EngineStatus; onClick?: () =>
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function ManusStructurePanel({ open, onOpenChange, metrics }: { open: boolean; onOpenChange: (open: boolean) => void; metrics: any }) {
-  const AGENTS = [
-    { name: "Architect", role: "Design & Arquitetura", icon: Layers, color: "text-blue-400", bg: "bg-blue-500/10" },
-    { name: "Generator", role: "Geração de Código", icon: Code, color: "text-green-400", bg: "bg-green-500/10" },
-    { name: "Validator", role: "Validação TypeScript", icon: Shield, color: "text-amber-400", bg: "bg-amber-500/10" },
-    { name: "Executor", role: "Execução & Staging", icon: Terminal, color: "text-red-400", bg: "bg-red-500/10" },
-    { name: "Researcher", role: "Pesquisa & Contexto", icon: Search, color: "text-cyan-400", bg: "bg-cyan-500/10" },
-    { name: "Evolution", role: "Aprendizado Evolutivo", icon: Sparkles, color: "text-purple-400", bg: "bg-purple-500/10" },
-  ];
-
-  const TOOL_CATEGORIES = [
-    { name: "Busca Semântica", count: 8, icon: Search, color: "text-violet-400" },
-    { name: "Leitura/Escrita de Arquivos", count: 12, icon: FileText, color: "text-blue-400" },
-    { name: "Comandos Shell", count: 6, icon: Terminal, color: "text-green-400" },
-    { name: "Web Research", count: 5, icon: Globe, color: "text-cyan-400" },
-    { name: "Knowledge Graph", count: 8, icon: Network, color: "text-amber-400" },
-    { name: "ERP & Database", count: 10, icon: Database, color: "text-emerald-400" },
-    { name: "Análise de Código", count: 7, icon: Code, color: "text-pink-400" },
-  ];
-
-  const uptime = metrics?.metrics?.uptime
-    ? `${Math.floor(metrics.metrics.uptime / 3600)}h ${Math.floor((metrics.metrics.uptime % 3600) / 60)}m`
-    : "---";
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] bg-[#0d0d1a] border-[#2a2a4a] text-white overflow-hidden p-0">
-        <div className="sticky top-0 z-10 bg-gradient-to-r from-violet-600/20 via-purple-600/20 to-indigo-600/20 border-b border-violet-500/20 p-6">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-violet-500/30 to-purple-600/30 border border-violet-500/30">
-                <Brain className="w-7 h-7 text-violet-400" />
-              </div>
-              <div>
-                <DialogTitle className="text-xl font-bold text-white">Manus IA - Cérebro Central</DialogTitle>
-                <DialogDescription className="text-violet-300/80">
-                  Arquitetura do motor de inteligência que alimenta todos os agentes
-                </DialogDescription>
-              </div>
-            </div>
-          </DialogHeader>
-
-          <div className="grid grid-cols-4 gap-3 mt-4">
-            <div className="text-center p-3 rounded-lg bg-[#1a1a2e]/80 border border-[#2a2a4a]">
-              <p className="text-2xl font-bold text-violet-400">{metrics?.model || "GPT-4o"}</p>
-              <p className="text-[10px] text-gray-400 uppercase mt-1">Modelo</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-[#1a1a2e]/80 border border-[#2a2a4a]">
-              <p className="text-2xl font-bold text-white">{metrics?.metrics?.totalCalls || 0}</p>
-              <p className="text-[10px] text-gray-400 uppercase mt-1">Chamadas IA</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-[#1a1a2e]/80 border border-[#2a2a4a]">
-              <p className="text-2xl font-bold text-emerald-400">{((metrics?.metrics?.totalTokens || 0) / 1000).toFixed(1)}k</p>
-              <p className="text-[10px] text-gray-400 uppercase mt-1">Tokens</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-[#1a1a2e]/80 border border-[#2a2a4a]">
-              <p className="text-2xl font-bold text-cyan-400">{uptime}</p>
-              <p className="text-[10px] text-gray-400 uppercase mt-1">Uptime</p>
-            </div>
-          </div>
-        </div>
-
-        <ScrollArea className="max-h-[calc(90vh-220px)]">
-          <div className="p-6 space-y-6">
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-violet-400" />
-                Arquitetura: Fluxo de Inteligência
-              </h3>
-              <div className="relative p-4 rounded-xl bg-[#1a1a2e] border border-[#2a2a4a]">
-                <div className="flex flex-col items-center gap-2">
-                  <div className="w-full p-3 rounded-lg bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-500/20 text-center">
-                    <div className="flex items-center justify-center gap-2 mb-1">
-                      <Brain className="w-5 h-5 text-violet-400" />
-                      <span className="text-sm font-bold text-violet-300">ManusIntelligence (Singleton)</span>
-                    </div>
-                    <p className="text-[10px] text-gray-400">GPT-4o + ToolManager + Context Enrichment</p>
-                  </div>
-
-                  <div className="flex items-center gap-1 text-gray-500">
-                    <ArrowRight className="w-4 h-4 rotate-90" />
-                    <span className="text-[10px]">generate() / think()</span>
-                    <ArrowRight className="w-4 h-4 rotate-90" />
-                  </div>
-
-                  <div className="w-full p-3 rounded-lg bg-[#0d0d1a] border border-[#1a1a3a] text-center">
-                    <span className="text-xs font-medium text-amber-400">enrichWithContext()</span>
-                    <p className="text-[10px] text-gray-500 mt-1">ToolManager.search_code → Contexto Semântico Automático</p>
-                  </div>
-
-                  <ArrowRight className="w-4 h-4 rotate-90 text-gray-500" />
-
-                  <div className="grid grid-cols-3 gap-2 w-full">
-                    {AGENTS.map((agent) => (
-                      <div key={agent.name} className={`p-2.5 rounded-lg ${agent.bg} border border-[#2a2a4a] text-center`}>
-                        <agent.icon className={`w-4 h-4 ${agent.color} mx-auto mb-1`} />
-                        <p className={`text-xs font-semibold ${agent.color}`}>{agent.name}</p>
-                        <p className="text-[9px] text-gray-500 mt-0.5">{agent.role}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-400" />
-                Ferramentas Disponíveis ({metrics?.capabilities?.tools || 56})
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {TOOL_CATEGORIES.map((cat) => (
-                  <div key={cat.name} className="p-3 rounded-lg bg-[#1a1a2e] border border-[#2a2a4a] hover:border-[#3a3a5a] transition-all">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <cat.icon className={`w-3.5 h-3.5 ${cat.color}`} />
-                      <span className={`text-xs font-medium ${cat.color}`}>{cat.count}</span>
-                    </div>
-                    <p className="text-[10px] text-gray-400">{cat.name}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-emerald-400" />
-                Capacidades Ativas
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {[
-                  { name: "Cérebro Central (GPT-4o)", active: true },
-                  { name: "Enriquecimento de Contexto", active: true },
-                  { name: "Busca Semântica de Código", active: true },
-                  { name: "Knowledge Graph", active: true },
-                  { name: "Pipeline Autônomo de Dev", active: true },
-                  { name: "Orquestração de 6 Agentes", active: true },
-                  { name: "Leitura/Escrita de Arquivos", active: true },
-                  { name: "Execução de Comandos Shell", active: true },
-                  { name: "Web Research", active: true },
-                  { name: "Análise de Código", active: true },
-                  { name: "Validação TypeScript", active: true },
-                  { name: "Memória Evolutiva", active: true },
-                ].map((cap) => (
-                  <div key={cap.name} className="flex items-center gap-2 p-2 rounded-lg bg-[#1a1a2e] border border-[#2a2a4a]">
-                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span className="text-xs text-gray-300">{cap.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {metrics?.metrics?.errorCount > 0 && (
-              <div className="p-3 rounded-lg bg-red-500/5 border border-red-500/20">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertCircle className="w-4 h-4 text-red-400" />
-                  <span className="text-xs font-medium text-red-400">Erros Registrados</span>
-                </div>
-                <p className="text-xs text-gray-400">
-                  Total: <span className="text-red-400 font-medium">{metrics.metrics.errorCount}</span>
-                  {metrics.metrics.lastCallAt && (
-                    <> | Última chamada: <span className="text-gray-300">{new Date(metrics.metrics.lastCallAt).toLocaleString("pt-BR")}</span></>
-                  )}
-                </p>
-              </div>
-            )}
-
-            <div className="p-4 rounded-xl bg-[#1a1a2e] border border-[#2a2a4a]">
-              <h3 className="text-sm font-semibold text-gray-300 mb-3 flex items-center gap-2">
-                <Network className="w-4 h-4 text-violet-400" />
-                Diagrama de Fluxo
-              </h3>
-              <div className="font-mono text-[11px] text-gray-400 space-y-0.5 bg-[#0a0a15] p-4 rounded-lg border border-[#1a1a3a]">
-                <p className="text-violet-400">{"┌──────────────────────────────────────────────────────────┐"}</p>
-                <p className="text-violet-400">{"│         MANUS INTELLIGENCE  (Singleton GPT-4o)           │"}</p>
-                <p className="text-violet-400">{"├──────────────────────────────────────────────────────────┤"}</p>
-                <p>{"│  .generate(prompt)  →  enrichWithContext()  →  OpenAI   │"}</p>
-                <p>{"│  .think(prompt)     →  enrichWithContext()  →  OpenAI   │"}</p>
-                <p>{"│  .getMetrics()      →  calls, tokens, errors, uptime   │"}</p>
-                <p className="text-violet-400">{"├──────────────────────────────────────────────────────────┤"}</p>
-                <p className="text-amber-400">{"│  ToolManager.executeTool('search_code', query)          │"}</p>
-                <p className="text-amber-400">{"│  → Contexto semântico injetado automaticamente          │"}</p>
-                <p className="text-violet-400">{"├──────────────────────────────────────────────────────────┤"}</p>
-                <p className="text-blue-400">{"│  Architect  ──────┐                                     │"}</p>
-                <p className="text-green-400">{"│  Generator  ──────┤                                     │"}</p>
-                <p className="text-amber-400">{"│  Validator  ──────┤── Todos via manusIntelligence ──►   │"}</p>
-                <p className="text-red-400">{"│  Executor   ──────┤                                     │"}</p>
-                <p className="text-cyan-400">{"│  Researcher ──────┤                                     │"}</p>
-                <p className="text-purple-400">{"│  Evolution  ──────┘                                     │"}</p>
-                <p className="text-violet-400">{"├──────────────────────────────────────────────────────────┤"}</p>
-                <p className="text-emerald-400">{"│  /api/manus/health  →  Status, métricas, capacidades   │"}</p>
-                <p className="text-violet-400">{"└──────────────────────────────────────────────────────────┘"}</p>
-              </div>
-            </div>
-
-          </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -442,7 +209,6 @@ function SummaryCards({ summary }: { summary: EngineRoomData["summary"] }) {
 export default function EngineRoom() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("overview");
-  const [manusOpen, setManusOpen] = useState(false);
 
   const { data, isLoading, isRefetching } = useQuery<EngineRoomData>({
     queryKey: ["/api/engine-room/status"],
@@ -458,12 +224,6 @@ export default function EngineRoom() {
   const { data: autoMetrics } = useQuery<any>({
     queryKey: ["/api/automation-engine/metrics"],
     enabled: activeTab === "automation",
-    refetchInterval: 10000,
-  });
-
-  const { data: manusMetrics } = useQuery<any>({
-    queryKey: ["/api/manus/health"],
-    enabled: activeTab === "manus" || manusOpen,
     refetchInterval: 10000,
   });
 
@@ -537,9 +297,6 @@ export default function EngineRoom() {
                 <TabsTrigger value="automation" data-testid="tab-automation" className="data-[state=active]:bg-purple-500/10 data-[state=active]:text-purple-400">
                   <Zap className="w-4 h-4 mr-1.5" /> Motor Automacao
                 </TabsTrigger>
-                <TabsTrigger value="manus" data-testid="tab-manus" className="data-[state=active]:bg-violet-500/10 data-[state=active]:text-violet-400">
-                  <Brain className="w-4 h-4 mr-1.5" /> Manus IA
-                </TabsTrigger>
                 <TabsTrigger value="agents" data-testid="tab-agents" className="data-[state=active]:bg-cyan-500/10 data-[state=active]:text-cyan-400">
                   <Bot className="w-4 h-4 mr-1.5" /> Agentes XOS
                 </TabsTrigger>
@@ -548,11 +305,7 @@ export default function EngineRoom() {
               <TabsContent value="overview">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {data.engines.map((engine) => (
-                    <EngineCard
-                      key={engine.name}
-                      engine={engine}
-                      onClick={engine.name === "manus-ia" ? () => setManusOpen(true) : undefined}
-                    />
+                    <EngineCard key={engine.name} engine={engine} />
                   ))}
                 </div>
               </TabsContent>
@@ -685,83 +438,6 @@ export default function EngineRoom() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="manus">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {data.engines.filter(e => e.name === "manus-ia").map(e => (
-                    <EngineCard key={e.name} engine={e} onClick={() => setManusOpen(true)} />
-                  ))}
-                  <Card className="bg-[#1a1a2e] border-[#2a2a4a]">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium text-gray-300 flex items-center gap-2">
-                        <Sparkles className="w-4 h-4 text-violet-400" /> Metricas do Manus IA
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {manusMetrics ? (
-                        <>
-                          <div className="p-3 rounded bg-[#0d0d1a] border border-[#1a1a3a]">
-                            <p className="text-xs text-gray-500 uppercase mb-2">Modelo & Performance</p>
-                            <div className="grid grid-cols-3 gap-2">
-                              <div className="text-center">
-                                <p className="text-lg font-bold text-violet-400">{manusMetrics.model || "GPT-4o"}</p>
-                                <p className="text-[10px] text-gray-500">Modelo</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-lg font-bold text-white">{manusMetrics.metrics?.totalCalls || 0}</p>
-                                <p className="text-[10px] text-gray-500">Chamadas IA</p>
-                              </div>
-                              <div className="text-center">
-                                <p className="text-lg font-bold text-emerald-400">{((manusMetrics.metrics?.totalTokens || 0) / 1000).toFixed(1)}k</p>
-                                <p className="text-[10px] text-gray-500">Tokens</p>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="p-3 rounded bg-[#0d0d1a] border border-[#1a1a3a]">
-                            <p className="text-xs text-gray-500 uppercase mb-2">Capacidades Ativas</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-lg font-bold text-white">{manusMetrics.capabilities?.tools || 56}</span>
-                                <span className="text-xs text-gray-400">Ferramentas</span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-lg font-bold text-white">{manusMetrics.capabilities?.agents || 0}</span>
-                                <span className="text-xs text-gray-400">Agentes Ativos</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="p-3 rounded bg-[#0d0d1a] border border-[#1a1a3a]">
-                            <p className="text-xs text-gray-500 uppercase mb-2">Uptime</p>
-                            <p className="text-sm text-gray-300">
-                              {manusMetrics.metrics?.uptime 
-                                ? `${Math.floor(manusMetrics.metrics.uptime / 3600)}h ${Math.floor((manusMetrics.metrics.uptime % 3600) / 60)}m`
-                                : "---"}
-                            </p>
-                          </div>
-                        </>
-                      ) : (
-                        <div className="text-center py-4 text-gray-500">
-                          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                          <p className="text-xs">Carregando metricas...</p>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-                <div className="mt-4 p-4 rounded-lg bg-[#1a1a2e] border border-[#2a2a4a]">
-                  <h3 className="text-sm font-medium text-gray-300 mb-2 flex items-center gap-2">
-                    <Brain className="w-4 h-4 text-violet-400" /> Capacidades do Manus IA
-                  </h3>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {["GPT-4o (Cerebro Central)", "56 Ferramentas Integradas", "Knowledge Graph", "Busca Semantica", "Pipeline de Dev Autonomo", "Orquestrador de Agentes", "Leitura/Escrita de Arquivos", "Execucao de Comandos", "Web Research", "Analise de Codigo", "Validacao TypeScript", "Memoria Evolutiva"].map(cap => (
-                      <div key={cap} className="flex items-center gap-2 p-2 rounded bg-[#0d0d1a]">
-                        <CheckCircle className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                        <span className="text-xs text-gray-300">{cap}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </TabsContent>
-
               <TabsContent value="agents">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-medium text-gray-300 flex items-center gap-2">
@@ -813,15 +489,13 @@ export default function EngineRoom() {
                 <p className="text-amber-400">{"├─────────────────────────────────────────────────────┤"}</p>
                 <p>{"│  Express.js (5000)  ─── Orquestracao + API Gateway  │"}</p>
                 <p className="text-amber-400">{"├─────────────────────────────────────────────────────┤"}</p>
-                <p className="text-violet-400 font-bold">{"│  Manus IA  (5000)   ─── GPT-4o + 56 Tools (Cerebro)│"}</p>
-                <p className="text-amber-400">{"├─────────────────────────────────────────────────────┤"}</p>
                 <p className="text-blue-400">{"│  Plus ERP (8080)    ─── Laravel/PHP - ERP Completo  │"}</p>
                 <p className="text-amber-300">{"│  Contabil  (8003)   ─── FastAPI - DRE/Balancete     │"}</p>
                 <p className="text-amber-300">{"│  Fiscal    (8002)   ─── FastAPI - NF-e/SEFAZ        │"}</p>
                 <p className="text-emerald-400">{"│  BI Engine (8004)   ─── FastAPI - SQL/Charts/Cache  │"}</p>
                 <p className="text-purple-400">{"│  Automacao (8005)   ─── FastAPI - Scheduler/Events  │"}</p>
                 <p className="text-amber-400">{"├─────────────────────────────────────────────────────┤"}</p>
-                <p className="text-cyan-400">{"│  XOS Agents         ─── 6 Agentes via ManusIntel.   │"}</p>
+                <p className="text-cyan-400">{"│  XOS Agents         ─── 6 Agentes Autonomos         │"}</p>
                 <p className="text-amber-400">{"└─────────────────────────────────────────────────────┘"}</p>
               </div>
             </div>
@@ -832,8 +506,6 @@ export default function EngineRoom() {
             <p>Nao foi possivel carregar o status dos motores</p>
           </div>
         )}
-
-        <ManusStructurePanel open={manusOpen} onOpenChange={setManusOpen} metrics={manusMetrics} />
       </div>
     </div>
   );

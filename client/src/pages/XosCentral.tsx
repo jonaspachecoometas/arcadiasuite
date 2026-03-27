@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
-import { 
-  Users, Building2, TrendingUp, MessageSquare, Ticket, Zap, LayoutGrid, 
+import {
+  Users, Building2, TrendingUp, MessageSquare, Ticket, Zap, LayoutGrid,
   ChevronRight, PlusCircle, Filter, Search, Bell, Calendar, Target,
-  BarChart3, DollarSign, Clock, AlertCircle, Phone, Mail, ArrowUpRight
+  BarChart3, DollarSign, Clock, AlertCircle, Phone, Mail, ArrowUpRight,
+  Activity, Hash, Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,6 +16,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface XosStats {
   total_contacts: number;
@@ -69,12 +71,10 @@ interface Activity {
 export default function XosCentral() {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isNewContactOpen, setIsNewContactOpen] = useState(false);
-  const [newContact, setNewContact] = useState({ name: "", email: "", phone: "", company: "", position: "" });
   const [isNewActivityOpen, setIsNewActivityOpen] = useState(false);
-  const [newActivity, setNewActivity] = useState({ type: "task", title: "", description: "", due_at: "", priority: "normal" });
-  const [isNewSelectorOpen, setIsNewSelectorOpen] = useState(false);
-  const [isNewDealOpen, setIsNewDealOpen] = useState(false);
-  const [newDeal, setNewDeal] = useState({ title: "", pipeline_id: "1", stage_id: "1", value: "" });
+  const [newContact, setNewContact] = useState({ name: "", email: "", phone: "", company: "", position: "" });
+  const [newActivity, setNewActivity] = useState({ type: "task", title: "", due_at: "", priority: "medium" });
+
   const queryClient = useQueryClient();
 
   const createContactMutation = useMutation({
@@ -95,24 +95,6 @@ export default function XosCentral() {
     },
   });
 
-  const createDealMutation = useMutation({
-    mutationFn: async (data: typeof newDeal) => {
-      const res = await fetch("/api/xos/deals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Erro ao criar negócio");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/xos/deals"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/xos/stats"] });
-      setIsNewDealOpen(false);
-      setNewDeal({ title: "", pipeline_id: "1", stage_id: "1", value: "" });
-    },
-  });
-
   const createActivityMutation = useMutation({
     mutationFn: async (data: typeof newActivity) => {
       const res = await fetch("/api/xos/activities", {
@@ -127,7 +109,7 @@ export default function XosCentral() {
       queryClient.invalidateQueries({ queryKey: ["/api/xos/activities"] });
       queryClient.invalidateQueries({ queryKey: ["/api/xos/stats"] });
       setIsNewActivityOpen(false);
-      setNewActivity({ type: "task", title: "", description: "", due_at: "", priority: "normal" });
+      setNewActivity({ type: "task", title: "", due_at: "", priority: "medium" });
     },
   });
 
@@ -161,6 +143,9 @@ export default function XosCentral() {
     { id: "automations", name: "Automações", icon: Zap, href: "/xos/automations", color: "bg-violet-100 text-violet-600", description: "Workflows automáticos" },
     { id: "campaigns", name: "Campanhas", icon: Target, href: "/xos/campaigns", color: "bg-pink-100 text-pink-600", description: "Marketing automation" },
     { id: "sites", name: "Sites", icon: LayoutGrid, href: "/xos/sites", color: "bg-cyan-100 text-cyan-600", description: "Site builder" },
+    { id: "supervisor", name: "Supervisor", icon: Activity, href: "/xos/supervisor", color: "bg-indigo-100 text-indigo-600", description: "Monitor em tempo real" },
+    { id: "reports", name: "Relatórios", icon: BarChart3, href: "/xos/reports", color: "bg-emerald-100 text-emerald-600", description: "CSAT, SLA e KPIs" },
+    { id: "protocols", name: "Protocolos", icon: Hash, href: "/xos/protocols", color: "bg-teal-100 text-teal-600", description: "Rastreamento de atendimentos" },
   ];
 
   const getStatusColor = (status: string) => {
@@ -241,9 +226,9 @@ export default function XosCentral() {
                   </span>
                 )}
               </Button>
-              <Button data-testid="button-new-contact" onClick={() => setIsNewSelectorOpen(true)}>
+              <Button data-testid="button-new-contact" onClick={() => setIsNewContactOpen(true)}>
                 <PlusCircle className="h-4 w-4 mr-2" />
-                Novo
+                Novo Contato
               </Button>
             </div>
           </div>
@@ -328,7 +313,7 @@ export default function XosCentral() {
             {/* Modules Grid */}
             <div>
               <h2 className="text-lg font-semibold text-slate-800 mb-4">Módulos XOS</h2>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-9 gap-4">
                 {modules.map((mod) => (
                   <Link key={mod.id} href={mod.href}>
                     <Card className="hover:shadow-lg transition-all cursor-pointer group" data-testid={`card-module-${mod.id}`}>
@@ -584,175 +569,129 @@ export default function XosCentral() {
         </Tabs>
       </main>
     </div>
-
-    {/* Seletor: o que deseja criar? */}
-    <Dialog open={isNewSelectorOpen} onOpenChange={setIsNewSelectorOpen}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>O que deseja criar?</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-3 pt-2">
-          <button
-            className="flex items-center gap-4 p-4 rounded-lg border hover:bg-blue-50 hover:border-blue-300 transition-colors text-left"
-            onClick={() => { setIsNewSelectorOpen(false); setIsNewContactOpen(true); }}
-          >
-            <div className="bg-blue-100 p-2 rounded-lg"><Users className="h-5 w-5 text-blue-600" /></div>
-            <div><p className="font-semibold text-slate-800">Contato</p><p className="text-sm text-slate-500">Adicionar lead ou cliente</p></div>
-          </button>
-          <button
-            className="flex items-center gap-4 p-4 rounded-lg border hover:bg-emerald-50 hover:border-emerald-300 transition-colors text-left"
-            onClick={() => { setIsNewSelectorOpen(false); setIsNewDealOpen(true); }}
-          >
-            <div className="bg-emerald-100 p-2 rounded-lg"><TrendingUp className="h-5 w-5 text-emerald-600" /></div>
-            <div><p className="font-semibold text-slate-800">Negócio</p><p className="text-sm text-slate-500">Criar oportunidade de venda</p></div>
-          </button>
-          <button
-            className="flex items-center gap-4 p-4 rounded-lg border hover:bg-violet-50 hover:border-violet-300 transition-colors text-left"
-            onClick={() => { setIsNewSelectorOpen(false); setIsNewActivityOpen(true); }}
-          >
-            <div className="bg-violet-100 p-2 rounded-lg"><Calendar className="h-5 w-5 text-violet-600" /></div>
-            <div><p className="font-semibold text-slate-800">Atividade</p><p className="text-sm text-slate-500">Agendar tarefa ou reunião</p></div>
-          </button>
-        </div>
-      </DialogContent>
-    </Dialog>
-
-    {/* Dialog Novo Negócio */}
-    <Dialog open={isNewDealOpen} onOpenChange={setIsNewDealOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Novo Negócio</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <div>
-            <Label>Título *</Label>
-            <Input placeholder="Ex: Proposta comercial Empresa X" value={newDeal.title} onChange={(e) => setNewDeal({ ...newDeal, title: e.target.value })} />
-          </div>
-          <div>
-            <Label>Estágio</Label>
-            <select className="w-full mt-1 border rounded-md px-3 py-2 text-sm" value={newDeal.stage_id} onChange={(e) => setNewDeal({ ...newDeal, stage_id: e.target.value })}>
-              <option value="1">Prospecção</option>
-              <option value="2">Qualificação</option>
-              <option value="3">Proposta</option>
-              <option value="4">Negociação</option>
-              <option value="5">Ganho</option>
-              <option value="6">Perdido</option>
-            </select>
-          </div>
-          <div>
-            <Label>Valor (R$)</Label>
-            <Input type="number" placeholder="0,00" value={newDeal.value} onChange={(e) => setNewDeal({ ...newDeal, value: e.target.value })} />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setIsNewDealOpen(false)}>Cancelar</Button>
+      {/* Modal: Novo Contato */}
+      <Dialog open={isNewContactOpen} onOpenChange={setIsNewContactOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Contato</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome *</Label>
+              <Input
+                value={newContact.name}
+                onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                placeholder="Nome do contato"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={newContact.email}
+                onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                placeholder="email@exemplo.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone</Label>
+              <Input
+                value={newContact.phone}
+                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Empresa</Label>
+                <Input
+                  value={newContact.company}
+                  onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
+                  placeholder="Empresa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Cargo</Label>
+                <Input
+                  value={newContact.position}
+                  onChange={(e) => setNewContact({ ...newContact, position: e.target.value })}
+                  placeholder="Cargo"
+                />
+              </div>
+            </div>
             <Button
-              className="flex-1"
-              onClick={() => createDealMutation.mutate(newDeal)}
-              disabled={!newDeal.title || createDealMutation.isPending}
-            >
-              {createDealMutation.isPending ? "Salvando..." : "Salvar Negócio"}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-
-    <Dialog open={isNewContactOpen} onOpenChange={setIsNewContactOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Novo Contato</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <div>
-            <Label>Nome *</Label>
-            <Input placeholder="Nome completo" value={newContact.name} onChange={(e) => setNewContact({ ...newContact, name: e.target.value })} />
-          </div>
-          <div>
-            <Label>E-mail</Label>
-            <Input placeholder="email@empresa.com" value={newContact.email} onChange={(e) => setNewContact({ ...newContact, email: e.target.value })} />
-          </div>
-          <div>
-            <Label>Telefone / WhatsApp</Label>
-            <Input placeholder="(11) 99999-9999" value={newContact.phone} onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })} />
-          </div>
-          <div>
-            <Label>Empresa</Label>
-            <Input placeholder="Nome da empresa" value={newContact.company} onChange={(e) => setNewContact({ ...newContact, company: e.target.value })} />
-          </div>
-          <div>
-            <Label>Cargo</Label>
-            <Input placeholder="Cargo ou função" value={newContact.position} onChange={(e) => setNewContact({ ...newContact, position: e.target.value })} />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setIsNewContactOpen(false)}>Cancelar</Button>
-            <Button
-              className="flex-1"
+              className="w-full"
               onClick={() => createContactMutation.mutate(newContact)}
               disabled={!newContact.name || createContactMutation.isPending}
             >
-              {createContactMutation.isPending ? "Salvando..." : "Salvar Contato"}
+              {createContactMutation.isPending ? "Salvando..." : "Criar Contato"}
             </Button>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
 
-    <Dialog open={isNewActivityOpen} onOpenChange={setIsNewActivityOpen}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Nova Atividade</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <div>
-            <Label>Tipo</Label>
-            <select
-              className="w-full mt-1 border rounded-md px-3 py-2 text-sm"
-              value={newActivity.type}
-              onChange={(e) => setNewActivity({ ...newActivity, type: e.target.value })}
-            >
-              <option value="task">Tarefa</option>
-              <option value="call">Ligação</option>
-              <option value="email">E-mail</option>
-              <option value="meeting">Reunião</option>
-            </select>
-          </div>
-          <div>
-            <Label>Título *</Label>
-            <Input placeholder="Descreva a atividade" value={newActivity.title} onChange={(e) => setNewActivity({ ...newActivity, title: e.target.value })} />
-          </div>
-          <div>
-            <Label>Descrição</Label>
-            <Input placeholder="Detalhes adicionais" value={newActivity.description} onChange={(e) => setNewActivity({ ...newActivity, description: e.target.value })} />
-          </div>
-          <div>
-            <Label>Data prevista</Label>
-            <Input type="datetime-local" value={newActivity.due_at} onChange={(e) => setNewActivity({ ...newActivity, due_at: e.target.value })} />
-          </div>
-          <div>
-            <Label>Prioridade</Label>
-            <select
-              className="w-full mt-1 border rounded-md px-3 py-2 text-sm"
-              value={newActivity.priority}
-              onChange={(e) => setNewActivity({ ...newActivity, priority: e.target.value })}
-            >
-              <option value="low">Baixa</option>
-              <option value="normal">Normal</option>
-              <option value="high">Alta</option>
-            </select>
-          </div>
-          <div className="flex gap-2 pt-2">
-            <Button variant="outline" className="flex-1" onClick={() => setIsNewActivityOpen(false)}>Cancelar</Button>
+      {/* Modal: Nova Atividade */}
+      <Dialog open={isNewActivityOpen} onOpenChange={setIsNewActivityOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Atividade</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Título *</Label>
+              <Input
+                value={newActivity.title}
+                onChange={(e) => setNewActivity({ ...newActivity, title: e.target.value })}
+                placeholder="Descrição da atividade"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={newActivity.type} onValueChange={(v) => setNewActivity({ ...newActivity, type: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="task">Tarefa</SelectItem>
+                    <SelectItem value="call">Ligação</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
+                    <SelectItem value="meeting">Reunião</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Prioridade</Label>
+                <Select value={newActivity.priority} onValueChange={(v) => setNewActivity({ ...newActivity, priority: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Baixa</SelectItem>
+                    <SelectItem value="medium">Média</SelectItem>
+                    <SelectItem value="high">Alta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Data prevista</Label>
+              <Input
+                type="datetime-local"
+                value={newActivity.due_at}
+                onChange={(e) => setNewActivity({ ...newActivity, due_at: e.target.value })}
+              />
+            </div>
             <Button
-              className="flex-1"
+              className="w-full"
               onClick={() => createActivityMutation.mutate(newActivity)}
               disabled={!newActivity.title || createActivityMutation.isPending}
             >
-              {createActivityMutation.isPending ? "Salvando..." : "Salvar Atividade"}
+              {createActivityMutation.isPending ? "Salvando..." : "Criar Atividade"}
             </Button>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
     </BrowserFrame>
   );
 }

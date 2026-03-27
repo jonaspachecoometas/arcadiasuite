@@ -2,10 +2,9 @@
  * Arcadia Suite - Base Blackboard Agent
  * 
  * Classe base para agentes que monitoram e reagem ao Blackboard.
- * Toda inteligência de IA é centralizada via ManusIntelligence.
  * 
  * @author Arcadia Development Team
- * @version 2.0.0 - Manus-Powered
+ * @version 1.0.0
  */
 
 import OpenAI from "openai";
@@ -35,121 +34,6 @@ export interface AgentThought {
   finished?: boolean;
   result?: any;
 }
-
-export class ManusIntelligence {
-  private static instance: ManusIntelligence;
-  private model = "arcadia-agent";
-  private callCount = 0;
-  private tokenCount = 0;
-  private errorCount = 0;
-  private lastCallAt = 0;
-  private startedAt = Date.now();
-
-  static getInstance(): ManusIntelligence {
-    if (!ManusIntelligence.instance) {
-      ManusIntelligence.instance = new ManusIntelligence();
-    }
-    return ManusIntelligence.instance;
-  }
-
-  async generate(systemPrompt: string, userPrompt: string, options?: { maxTokens?: number; temperature?: number; enrichContext?: boolean }): Promise<string> {
-    this.callCount++;
-    try {
-      let enrichedPrompt = userPrompt;
-      if (options?.enrichContext !== false) {
-        const contextData = await this.enrichWithContext(userPrompt);
-        if (contextData) {
-          enrichedPrompt = userPrompt + contextData;
-        }
-      }
-
-      const response = await openai.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: enrichedPrompt }
-        ],
-        max_tokens: options?.maxTokens || 8000,
-        temperature: options?.temperature || 0.2,
-      });
-      const content = response.choices[0]?.message?.content || '';
-      this.tokenCount += response.usage?.total_tokens || 0;
-      this.lastCallAt = Date.now();
-      return content;
-    } catch (error: any) {
-      this.errorCount++;
-      console.error(`[ManusIntelligence] Erro na geração:`, error.message);
-      throw error;
-    }
-  }
-
-  async think(systemPrompt: string, taskContext: string): Promise<AgentThought> {
-    this.callCount++;
-    try {
-      const contextData = await this.enrichWithContext(taskContext);
-      const enrichedContext = contextData ? taskContext + contextData : taskContext;
-
-      const response = await openai.chat.completions.create({
-        model: this.model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: enrichedContext }
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 4000,
-        temperature: 0.2,
-      });
-      const content = response.choices[0]?.message?.content || '{}';
-      this.tokenCount += response.usage?.total_tokens || 0;
-      this.lastCallAt = Date.now();
-      return JSON.parse(content) as AgentThought;
-    } catch (error: any) {
-      this.errorCount++;
-      console.error(`[ManusIntelligence] Erro ao pensar:`, error.message);
-      return {
-        thought: `Erro ao processar: ${error.message}`,
-        finished: true,
-        result: { error: error.message }
-      };
-    }
-  }
-
-  async enrichWithContext(prompt: string): Promise<string> {
-    try {
-      const { toolManager } = await import("../autonomous/tools");
-      
-      const keywords = prompt.split(/\s+/).filter(w => w.length > 4).slice(0, 5);
-      let contextData = "";
-      
-      const searchResult = await toolManager.execute("search_code", {
-        query: keywords.join("|"),
-        maxResults: 5,
-      });
-      if (searchResult.success && searchResult.data?.results?.length > 0) {
-        contextData += "\n\nCÓDIGO RELEVANTE DO PROJETO:\n" + 
-          searchResult.data.results.map((r: any) => `${r.file}:${r.line} - ${r.content}`).join("\n");
-      }
-      
-      return contextData;
-    } catch {
-      return "";
-    }
-  }
-
-  getMetrics() {
-    return {
-      model: this.model,
-      callCount: this.callCount,
-      tokenCount: this.tokenCount,
-      errorCount: this.errorCount,
-      lastCallAt: this.lastCallAt,
-      startedAt: this.startedAt,
-      healthy: !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-    };
-  }
-}
-
-export const manusIntelligence = ManusIntelligence.getInstance();
 
 export abstract class BaseBlackboardAgent extends EventEmitter {
   protected config: AgentConfig;
@@ -182,17 +66,48 @@ export abstract class BaseBlackboardAgent extends EventEmitter {
       ? `\n\nArtefatos disponíveis:\n${artifacts.map(a => `- ${a.name} (${a.type}): ${a.content?.slice(0, 500)}...`).join('\n')}`
       : '';
 
-    const taskContext = `TAREFA: ${task.title}\n\nDESCRIÇÃO: ${task.description}\n\nCONTEXTO: ${context}${artifactContext}\n\nResponda em JSON: { "thought": "seu raciocínio", "action": "próxima ação", "actionInput": {}, "finished": true/false, "result": "se finished=true" }`;
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: this.config.systemPrompt },
+          { 
+            role: "user", 
+            content: `TAREFA: ${task.title}\n\nDESCRIÇÃO: ${task.description}\n\nCONTEXTO: ${context}${artifactContext}\n\nResponda em JSON: { "thought": "seu raciocínio", "action": "próxima ação", "actionInput": {}, "finished": true/false, "result": "se finished=true" }`
+          }
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 4000,
+      });
 
-    return manusIntelligence.think(this.config.systemPrompt, taskContext);
+      const content = response.choices[0]?.message?.content || '{}';
+      return JSON.parse(content) as AgentThought;
+    } catch (error: any) {
+      console.error(`[${this.name}] Erro ao pensar:`, error.message);
+      return {
+        thought: `Erro ao processar: ${error.message}`,
+        finished: true,
+        result: { error: error.message }
+      };
+    }
   }
 
   protected async generateWithAI(prompt: string, systemPrompt?: string): Promise<string> {
-    return manusIntelligence.generate(
-      systemPrompt || this.config.systemPrompt,
-      prompt,
-      { maxTokens: 8000 }
-    );
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt || this.config.systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: 8000,
+      });
+
+      return response.choices[0]?.message?.content || '';
+    } catch (error: any) {
+      console.error(`[${this.name}] Erro na geração:`, error.message);
+      throw error;
+    }
   }
 
   protected async log(taskId: number, action: string, thought: string, observation?: string): Promise<void> {

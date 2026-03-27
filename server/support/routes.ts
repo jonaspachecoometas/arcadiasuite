@@ -237,7 +237,7 @@ Instruções:
 
     const openai = getOpenAI();
     const response = await openai.chat.completions.create({
-      model: "arcadia-agent",
+      model: "gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
         ...conversationHistory as any,
@@ -248,7 +248,7 @@ Instruções:
     
     const aiContent = response.choices[0]?.message?.content || "Desculpe, não consegui processar sua solicitação.";
     
-    const aiConversation = await supportStorage.createAiResponse(ticket.id, aiContent, "arcadia-agent");
+    const aiConversation = await supportStorage.createAiResponse(ticket.id, aiContent, "gpt-4o");
     
     res.json(aiConversation);
   } catch (error) {

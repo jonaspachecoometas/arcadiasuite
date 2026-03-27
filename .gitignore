@@ -1,9 +1,6 @@
 node_modules/
 dist/
 .DS_Store
-.env
-.env.local
-.env.production
 
 # Replit specific
 .cache/
@@ -63,18 +60,4 @@ attached_assets/
 
 # Package lock (regenerated on install)
 package-lock.json
-
-# Documentation files (except essential)
-MAPA_*.md
-AUDITORIA_*.md
-AVALIACAO_*.md
-DOCUMENTATION.md
-HOSPEDAGEM.md
-PLANO_*.md
-RELATORIO_*.md
-REQUISITOS_*.md
-*.pdf
-*.txt
-!README.md
-!replit.md
-.aider*
+.claude/

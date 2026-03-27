@@ -79,19 +79,9 @@ import {
   AlertCircle,
   RefreshCw,
   Cpu,
-  Sparkles,
-  ArrowDown,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
 
 interface ErpConnection {
   id: number;
@@ -146,13 +136,13 @@ interface LibrariesData {
 }
 
 async function fetchConnections(): Promise<ErpConnection[]> {
-  const response = await fetch("/api/soe/connections", { credentials: "include" });
+  const response = await fetch("/api/erp/connections", { credentials: "include" });
   if (!response.ok) throw new Error("Failed to fetch connections");
   return response.json();
 }
 
 async function fetchTasks(): Promise<AgentTask[]> {
-  const response = await fetch("/api/soe/tasks", { credentials: "include" });
+  const response = await fetch("/api/erp/tasks", { credentials: "include" });
   if (!response.ok) throw new Error("Failed to fetch tasks");
   return response.json();
 }
@@ -221,7 +211,7 @@ export default function Admin() {
 
   const createConnectionMutation = useMutation({
     mutationFn: async (data: typeof newConnection) => {
-      const response = await fetch("/api/soe/connections", {
+      const response = await fetch("/api/erp/connections", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
@@ -238,7 +228,7 @@ export default function Admin() {
 
   const testConnectionMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`/api/soe/connections/${id}/test`, {
+      const response = await fetch(`/api/erp/connections/${id}/test`, {
         method: "POST",
         credentials: "include",
       });
@@ -248,7 +238,7 @@ export default function Admin() {
 
   const deleteConnectionMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/soe/connections/${id}`, {
+      await fetch(`/api/erp/connections/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -260,7 +250,7 @@ export default function Admin() {
 
   const createTaskMutation = useMutation({
     mutationFn: async (data: typeof newTask) => {
-      const response = await fetch("/api/soe/tasks", {
+      const response = await fetch("/api/erp/tasks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -280,7 +270,7 @@ export default function Admin() {
 
   const executeTaskMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`/api/soe/tasks/${id}/execute`, {
+      const response = await fetch(`/api/erp/tasks/${id}/execute`, {
         method: "POST",
         credentials: "include",
       });
@@ -293,7 +283,7 @@ export default function Admin() {
 
   const deleteTaskMutation = useMutation({
     mutationFn: async (id: number) => {
-      await fetch(`/api/soe/tasks/${id}`, {
+      await fetch(`/api/erp/tasks/${id}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -359,7 +349,7 @@ export default function Admin() {
             </div>
             <div>
               <h1 className="text-2xl font-semibold text-slate-800">Administração</h1>
-              <p className="text-slate-500 text-sm">Gerencie conexões SOE, tarefas e base de conhecimento</p>
+              <p className="text-slate-500 text-sm">Gerencie conexões ERP, tarefas e base de conhecimento</p>
             </div>
           </div>
 
@@ -367,7 +357,7 @@ export default function Admin() {
             <TabsList className="mb-6">
               <TabsTrigger value="connections" className="flex items-center gap-2">
                 <Database className="w-4 h-4" />
-                Conexões SOE
+                Conexões ERP
               </TabsTrigger>
               <TabsTrigger value="tasks" className="flex items-center gap-2">
                 <Zap className="w-4 h-4" />
@@ -385,6 +375,10 @@ export default function Admin() {
                 <Boxes className="w-4 h-4" />
                 Módulos
               </TabsTrigger>
+              <TabsTrigger value="tenants" className="flex items-center gap-2" data-testid="tab-tenants">
+                <Building2 className="w-4 h-4" />
+                Multi-Tenant
+              </TabsTrigger>
               <TabsTrigger value="machine-house" className="flex items-center gap-2" data-testid="tab-machine-house">
                 <Factory className="w-4 h-4" />
                 Casa de Máquinas
@@ -395,8 +389,8 @@ export default function Admin() {
               <div className="grid gap-6 md:grid-cols-2">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Nova Conexão Motor</CardTitle>
-                    <CardDescription>Conecte ao Arcádia Plus ou ERPNext</CardDescription>
+                    <CardTitle className="text-lg">Nova Conexão ERP</CardTitle>
+                    <CardDescription>Conecte ao Arcadia Plus ou Arcádia ERP</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
@@ -409,7 +403,7 @@ export default function Admin() {
                       />
                     </div>
                     <div>
-                      <Label>Tipo de Motor</Label>
+                      <Label>Tipo de ERP</Label>
                       <Select
                         value={newConnection.type}
                         onValueChange={(value) => setNewConnection({ ...newConnection, type: value })}
@@ -419,7 +413,7 @@ export default function Admin() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="arcadia_plus">Arcadia Plus (REST API)</SelectItem>
-                          <SelectItem value="arcadia_next">ERPNext (Frappe)</SelectItem>
+                          <SelectItem value="arcadia_next">Arcádia ERP (Frappe/ERPNext)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -521,7 +515,7 @@ export default function Admin() {
                                 </div>
                               </div>
                               <div className="text-xs text-slate-500 space-y-1">
-                                <div>Tipo: {conn.type === "arcadia_plus" ? "Arcádia Plus" : "ERPNext"}</div>
+                                <div>Tipo: {conn.type === "arcadia_plus" ? "Arcadia Plus" : "Arcádia ERP"}</div>
                                 <div className="truncate">URL: {conn.baseUrl}</div>
                               </div>
                             </div>
@@ -570,7 +564,7 @@ export default function Admin() {
                       </Select>
                     </div>
                     <div>
-                      <Label>Conexão Motor</Label>
+                      <Label>Conexão ERP</Label>
                       <Select
                         value={newTask.erpConnectionId}
                         onValueChange={(value) => setNewTask({ ...newTask, erpConnectionId: value })}
@@ -993,6 +987,10 @@ export default function Admin() {
               <ModulesSection />
             </TabsContent>
 
+            <TabsContent value="tenants">
+              <TenantsSection />
+            </TabsContent>
+
             <TabsContent value="machine-house">
               <MachineHouseSection />
             </TabsContent>
@@ -1024,52 +1022,6 @@ function ModulesSection() {
   const [, setLocation] = useLocation();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const queryClient = useQueryClient();
-
-  const { data: tenantModules } = useQuery({
-    queryKey: ["tenant-modules"],
-    queryFn: async () => {
-      const res = await fetch("/api/soe/tenant/modules", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    }
-  });
-
-  const toggleModule = useMutation({
-    mutationFn: async ({ moduleKey, enabled }: { moduleKey: string; enabled: boolean }) => {
-      const currentFeatures = tenantModules?.features || {};
-      const updatedFeatures = { ...currentFeatures, [moduleKey]: enabled };
-      const res = await fetch("/api/soe/tenant/modules", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ features: updatedFeatures })
-      });
-      if (!res.ok) throw new Error("Failed");
-      return res.json();
-    },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tenant-modules"] })
-  });
-
-  const moduleToFeatureKey: Record<string, string> = {
-    'agent': 'manus', 'scientist': 'manus', 'knowledge': 'manus',
-    'automations': 'manus', 'mcp': 'centralApis', 'a2a': 'centralApis',
-    'xos-inbox': 'xosCrm', 'chat': 'comunidades', 'communities': 'comunidades',
-    'xos': 'xosCrm', 'nps': 'crm',
-    'crm': 'crm', 'compass': 'compass', 'production': 'production',
-    'support': 'support', 'valuation': 'bi',
-    'fisco': 'fisco', 'contabil': 'fisco', 'people': 'erp',
-    'soe': 'erp', 'financeiro': 'erp',
-    'retail': 'retail', 'plus': 'plus', 'marketplace': 'erp',
-    'insights': 'bi', 'central-apis': 'centralApis',
-    'ide': 'ide', 'canvas': 'ide', 'api-hub': 'centralApis',
-    'api-tester': 'centralApis', 'doctype-builder': 'ide',
-    'page-builder': 'ide', 'dev-center': 'ide', 'engineering': 'erp',
-    'lms': 'biblioteca',
-    'field-ops': 'erp', 'quality': 'erp', 'technical': 'retail',
-    'suppliers': 'erp',
-    'admin': 'erp', 'home': 'erp', 'migration': 'erp', 'super-admin': 'erp'
-  };
 
   const categories: ModuleCategory[] = [
     {
@@ -1279,12 +1231,12 @@ function ModulesSection() {
           features: ["Funcionários", "Folha de Pagamento", "Férias", "eSocial", "FGTS"]
         },
         {
-          id: "soe",
-          name: "Arcádia SOE",
-          description: "Sistema Operacional Empresarial - Kernel de negócios com clientes, fornecedores, produtos, pedidos",
-          icon: Building2,
+          id: "erp",
+          name: "Arcádia ERP",
+          description: "Gestão empresarial integrada com clientes, fornecedores, produtos, pedidos de venda e compra",
+          icon: Package,
           color: "from-purple-500 to-violet-600",
-          path: "/soe",
+          path: "/erp",
           status: "active",
           features: ["Clientes", "Fornecedores", "Produtos", "Vendas", "Compras"]
         },
@@ -1511,12 +1463,12 @@ function ModulesSection() {
         {
           id: "admin",
           name: "Painel Admin",
-          description: "Configurações do sistema, usuários, permissões e integrações SOE",
+          description: "Configurações do sistema, usuários, permissões e integrações ERP",
           icon: Settings,
           color: "from-gray-500 to-slate-600",
           path: "/admin",
           status: "active",
-          features: ["Usuários", "Permissões", "Conexões SOE", "Bibliotecas"]
+          features: ["Usuários", "Permissões", "Conexões ERP", "Bibliotecas"]
         },
         {
           id: "home",
@@ -1627,26 +1579,15 @@ function ModulesSection() {
                         <div className={`p-3 rounded-xl bg-gradient-to-br ${module.color}`}>
                           <IconComponent className="w-5 h-5 text-white" />
                         </div>
-                        {(() => {
-                          const featureKey = moduleToFeatureKey[module.id];
-                          const isEnabled = featureKey ? (tenantModules?.features?.[featureKey] ?? false) : true;
-                          const coreModules = ['admin', 'home', 'soe'];
-                          const isCore = coreModules.includes(module.id);
-                          return !isCore ? (
-                            <Switch
-                              checked={isEnabled}
-                              onCheckedChange={(checked) => {
-                                if (featureKey) {
-                                  toggleModule.mutate({ moduleKey: featureKey, enabled: checked });
-                                }
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                              data-testid={`switch-module-${module.id}`}
-                            />
-                          ) : (
-                            <Badge variant="outline" className="text-emerald-600 border-emerald-500 text-xs">Core</Badge>
-                          );
-                        })()}
+                        <Badge 
+                          variant="outline" 
+                          className={module.status === "active" 
+                            ? "text-emerald-600 border-emerald-500" 
+                            : "text-slate-400 border-slate-300"
+                          }
+                        >
+                          {module.status === "active" ? "Ativo" : "Em breve"}
+                        </Badge>
                       </div>
                       <CardTitle className="text-base mt-3 group-hover:text-primary transition-colors">
                         {module.name}
@@ -1697,6 +1638,69 @@ function ModulesSection() {
   );
 }
 
+// ==========================================
+// TENANTS SECTION - Multi-Tenant Management
+// ==========================================
+
+interface TenantData {
+  id: number;
+  name: string;
+  slug?: string;
+  email?: string;
+  phone?: string;
+  plan?: string;
+  status?: string;
+  tenantType?: string;
+  parentTenantId?: number | null;
+  partnerCode?: string;
+  commissionRate?: string;
+  maxUsers?: number;
+  maxStorageMb?: number;
+  createdAt: string;
+  parentTenant?: { id: number; name: string; tenantType: string } | null;
+  childCount?: number;
+}
+
+interface TenantPlanData {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  tenantType: string;
+  maxUsers?: number;
+  maxStorageMb?: number;
+  monthlyPrice?: number;
+  yearlyPrice?: number;
+  trialDays?: number;
+  isActive?: string;
+  sortOrder?: number;
+}
+
+interface TenantStats {
+  total: number;
+  byType: { master: number; partner: number; client: number };
+  byStatus: { active: number; trial: number; suspended: number; cancelled: number };
+}
+
+async function fetchTenants(type?: string): Promise<TenantData[]> {
+  const url = type ? `/api/admin/tenants?type=${type}` : "/api/admin/tenants";
+  const response = await fetch(url, { credentials: "include" });
+  if (!response.ok) throw new Error("Failed to fetch tenants");
+  return response.json();
+}
+
+async function fetchTenantPlans(): Promise<TenantPlanData[]> {
+  const response = await fetch("/api/admin/plans", { credentials: "include" });
+  if (!response.ok) throw new Error("Failed to fetch plans");
+  return response.json();
+}
+
+async function fetchTenantStats(): Promise<TenantStats> {
+  const response = await fetch("/api/admin/tenants/stats", { credentials: "include" });
+  if (!response.ok) throw new Error("Failed to fetch stats");
+  return response.json();
+}
+
 interface MHEngineStatus {
   name: string;
   displayName: string;
@@ -1732,7 +1736,6 @@ interface MHEngineRoomData {
 }
 
 const MH_ENGINE_ICONS: Record<string, ElementType> = {
-  "manus-ia": Brain,
   "plus": ShoppingCart,
   "contabil": Calculator,
   "fisco": FileText,
@@ -1748,7 +1751,7 @@ const MH_CATEGORY_COLORS: Record<string, string> = {
   intelligence: "bg-cyan-50 text-cyan-600 border-cyan-200",
 };
 
-function MHEngineCard({ engine, onRefresh, onClick }: { engine: MHEngineStatus; onRefresh: () => void; onClick?: () => void }) {
+function MHEngineCard({ engine, onRefresh }: { engine: MHEngineStatus; onRefresh: () => void }) {
   const EngineIcon = MH_ENGINE_ICONS[engine.name] || Server;
   const catColor = MH_CATEGORY_COLORS[engine.category] || "bg-gray-50 text-gray-600 border-gray-200";
   const [showLogs, setShowLogs] = useState(false);
@@ -1756,7 +1759,6 @@ function MHEngineCard({ engine, onRefresh, onClick }: { engine: MHEngineStatus; 
   const [logsLoading, setLogsLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [serviceInfo, setServiceInfo] = useState<any>(null);
-  const isClickable = !!onClick;
 
   const MANAGED_ENGINES = ["contabil", "bi-engine", "automation-engine"];
   const isManaged = MANAGED_ENGINES.includes(engine.name);
@@ -1811,11 +1813,7 @@ function MHEngineCard({ engine, onRefresh, onClick }: { engine: MHEngineStatus; 
   };
 
   return (
-    <Card
-      data-testid={`engine-card-${engine.name}`}
-      className={`hover:shadow-md transition-all ${isClickable ? "cursor-pointer hover:shadow-lg hover:border-violet-300 ring-0 hover:ring-1 hover:ring-violet-200" : ""}`}
-      onClick={isClickable ? onClick : undefined}
-    >
+    <Card data-testid={`engine-card-${engine.name}`} className="hover:shadow-md transition-all">
       <CardContent className="p-4">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
@@ -1827,17 +1825,10 @@ function MHEngineCard({ engine, onRefresh, onClick }: { engine: MHEngineStatus; 
               <p className="text-xs text-muted-foreground">{engine.description}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            {isClickable && (
-              <Badge variant="outline" className="border-violet-300 text-violet-600 bg-violet-50 text-[10px]">
-                Ver estrutura
-              </Badge>
-            )}
-            <Badge variant={engine.status === "online" ? "default" : "destructive"} className={engine.status === "online" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : engine.status === "error" ? "bg-amber-100 text-amber-700 border-amber-200" : ""}>
-              <div className={`w-2 h-2 rounded-full mr-1.5 ${engine.status === "online" ? "bg-emerald-500" : engine.status === "error" ? "bg-amber-500" : "bg-red-500"}`} />
-              {engine.status === "online" ? "Online" : engine.status === "error" ? "Erro" : "Offline"}
-            </Badge>
-          </div>
+          <Badge variant={engine.status === "online" ? "default" : "destructive"} className={engine.status === "online" ? "bg-emerald-100 text-emerald-700 border-emerald-200" : engine.status === "error" ? "bg-amber-100 text-amber-700 border-amber-200" : ""}>
+            <div className={`w-2 h-2 rounded-full mr-1.5 ${engine.status === "online" ? "bg-emerald-500" : engine.status === "error" ? "bg-amber-500" : "bg-red-500"}`} />
+            {engine.status === "online" ? "Online" : engine.status === "error" ? "Erro" : "Offline"}
+          </Badge>
         </div>
 
         <div className="grid grid-cols-3 gap-2 mt-3">
@@ -1946,7 +1937,7 @@ function MHEngineCard({ engine, onRefresh, onClick }: { engine: MHEngineStatus; 
               variant="outline"
               size="sm"
               className="flex-1 text-xs border-blue-300 text-blue-700 hover:bg-blue-50"
-              onClick={() => window.open('/plus', '_blank')}
+              onClick={() => window.open(`/plus/auto-login?redirect=${encodeURIComponent('/home')}`, '_blank')}
             >
               <ExternalLink className="w-3 h-3 mr-1" />
               Abrir Painel Plus
@@ -1992,7 +1983,6 @@ function MHEngineCard({ engine, onRefresh, onClick }: { engine: MHEngineStatus; 
 function MachineHouseSection() {
   const queryClient = useQueryClient();
   const [mhTab, setMhTab] = useState("overview");
-  const [manusOpen, setManusOpen] = useState(false);
 
   const { data: engineData, isLoading: engineLoading, isRefetching, isError } = useQuery<MHEngineRoomData>({
     queryKey: ["/api/engine-room/status"],
@@ -2002,12 +1992,6 @@ function MachineHouseSection() {
   const { data: biMetrics } = useQuery<any>({
     queryKey: ["/api/bi-engine/metrics"],
     enabled: mhTab === "bi",
-    refetchInterval: 10000,
-  });
-
-  const { data: manusMetrics } = useQuery<any>({
-    queryKey: ["/api/manus/health"],
-    enabled: manusOpen,
     refetchInterval: 10000,
   });
 
@@ -2035,8 +2019,8 @@ function MachineHouseSection() {
     } catch {}
   };
 
-  const handleOpenPlus = (path: string = '') => {
-    window.open(`/plus${path}`, '_blank');
+  const handleOpenPlus = (path: string = '/home') => {
+    window.open(`/plus/auto-login?redirect=${encodeURIComponent(path)}`, '_blank');
   };
 
   return (
@@ -2148,12 +2132,7 @@ function MachineHouseSection() {
                 <TabsContent value="overview">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {engineData.engines.map((engine) => (
-                      <MHEngineCard
-                        key={engine.name}
-                        engine={engine}
-                        onRefresh={handleRefresh}
-                        onClick={engine.name === "manus-ia" ? () => setManusOpen(true) : undefined}
-                      />
+                      <MHEngineCard key={engine.name} engine={engine} onRefresh={handleRefresh} />
                     ))}
                   </div>
                 </TabsContent>
@@ -2353,7 +2332,7 @@ function MachineHouseSection() {
                           </p>
                         </div>
                       </div>
-                      <Button onClick={() => handleOpenPlus()} variant="outline" size="sm">
+                      <Button onClick={() => handleOpenPlus('/home')} variant="outline" size="sm">
                         <ExternalLink className="w-4 h-4 mr-2" />
                         Abrir Painel Plus
                       </Button>
@@ -2459,177 +2438,800 @@ function MachineHouseSection() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
 
-      <Dialog open={manusOpen} onOpenChange={setManusOpen}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-gradient-to-br from-violet-100 to-purple-100 border border-violet-200">
-                <Brain className="w-7 h-7 text-violet-600" />
+function TenantsSection() {
+  const queryClient = useQueryClient();
+  const [activeSubTab, setActiveSubTab] = useState("tenants");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showCreatePlanDialog, setShowCreatePlanDialog] = useState(false);
+  const [editingTenant, setEditingTenant] = useState<TenantData | null>(null);
+  const [editingPlan, setEditingPlan] = useState<TenantPlanData | null>(null);
+  const [newTenant, setNewTenant] = useState({
+    name: "",
+    email: "",
+    tenantType: "client",
+    parentTenantId: "",
+    plan: "free",
+  });
+  const [newPlan, setNewPlan] = useState({
+    name: "",
+    description: "",
+    tenantType: "client",
+    maxUsers: 5,
+    maxStorageMb: 1000,
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    trialDays: 14,
+  });
+
+  const { data: tenants = [], isLoading: loadingTenants } = useQuery({
+    queryKey: ["admin-tenants", typeFilter],
+    queryFn: () => fetchTenants(typeFilter === "all" ? undefined : typeFilter),
+  });
+
+  const { data: plans = [], isLoading: loadingPlans } = useQuery({
+    queryKey: ["admin-plans"],
+    queryFn: fetchTenantPlans,
+  });
+
+  const { data: stats } = useQuery({
+    queryKey: ["admin-tenant-stats"],
+    queryFn: fetchTenantStats,
+  });
+
+  const createTenantMutation = useMutation({
+    mutationFn: async (data: typeof newTenant) => {
+      const response = await fetch("/api/admin/tenants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...data,
+          parentTenantId: data.parentTenantId ? parseInt(data.parentTenantId) : null,
+        }),
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to create tenant");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-tenant-stats"] });
+      setShowCreateDialog(false);
+      setNewTenant({ name: "", email: "", tenantType: "client", parentTenantId: "", plan: "free" });
+    },
+  });
+
+  const deleteTenantMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/admin/tenants/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-tenant-stats"] });
+    },
+  });
+
+  const updateTenantMutation = useMutation({
+    mutationFn: async (data: TenantData) => {
+      const response = await fetch(`/api/admin/tenants/${data.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to update tenant");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-tenant-stats"] });
+      setEditingTenant(null);
+    },
+  });
+
+  const createPlanMutation = useMutation({
+    mutationFn: async (data: typeof newPlan) => {
+      const response = await fetch("/api/admin/plans", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to create plan");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
+      setShowCreatePlanDialog(false);
+      setNewPlan({ name: "", description: "", tenantType: "client", maxUsers: 5, maxStorageMb: 1000, monthlyPrice: 0, yearlyPrice: 0, trialDays: 14 });
+    },
+  });
+
+  const updatePlanMutation = useMutation({
+    mutationFn: async (data: TenantPlanData) => {
+      const response = await fetch(`/api/admin/plans/${data.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to update plan");
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
+      setEditingPlan(null);
+    },
+  });
+
+  const deletePlanMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await fetch(`/api/admin/plans/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin-plans"] });
+    },
+  });
+
+  const getTenantTypeIcon = (type?: string) => {
+    switch (type) {
+      case "master": return <Crown className="w-4 h-4 text-amber-500" />;
+      case "partner": return <Handshake className="w-4 h-4 text-blue-500" />;
+      default: return <Building2 className="w-4 h-4 text-slate-500" />;
+    }
+  };
+
+  const getTenantTypeBadge = (type?: string) => {
+    switch (type) {
+      case "master": return <Badge className="bg-amber-100 text-amber-700 border-amber-300">Master</Badge>;
+      case "partner": return <Badge className="bg-blue-100 text-blue-700 border-blue-300">Parceiro</Badge>;
+      default: return <Badge className="bg-slate-100 text-slate-700 border-slate-300">Cliente</Badge>;
+    }
+  };
+
+  const getStatusBadge = (status?: string) => {
+    switch (status) {
+      case "active": return <Badge className="bg-green-100 text-green-700 border-green-300">Ativo</Badge>;
+      case "trial": return <Badge className="bg-purple-100 text-purple-700 border-purple-300">Trial</Badge>;
+      case "suspended": return <Badge className="bg-red-100 text-red-700 border-red-300">Suspenso</Badge>;
+      case "cancelled": return <Badge className="bg-slate-100 text-slate-500 border-slate-300">Cancelado</Badge>;
+      default: return <Badge variant="outline">-</Badge>;
+    }
+  };
+
+  const partnerTenants = tenants.filter(t => t.tenantType === "partner" || t.tenantType === "master");
+
+  return (
+    <div className="space-y-6">
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-slate-100">
+                  <Building2 className="w-5 h-5 text-slate-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-xs text-slate-500">Total de Tenants</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-100">
+                  <Crown className="w-5 h-5 text-amber-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.byType.master}</p>
+                  <p className="text-xs text-slate-500">Master</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-blue-100">
+                  <Handshake className="w-5 h-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.byType.partner}</p>
+                  <p className="text-xs text-slate-500">Parceiros</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-green-100">
+                  <Users className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold">{stats.byType.client}</p>
+                  <p className="text-xs text-slate-500">Clientes</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Tabs value={activeSubTab} onValueChange={setActiveSubTab}>
+        <div className="flex items-center justify-between mb-4">
+          <TabsList>
+            <TabsTrigger value="tenants" className="flex items-center gap-2">
+              <Building2 className="w-4 h-4" />
+              Tenants
+            </TabsTrigger>
+            <TabsTrigger value="plans" className="flex items-center gap-2">
+              <Package className="w-4 h-4" />
+              Planos
+            </TabsTrigger>
+            <TabsTrigger value="commissions" className="flex items-center gap-2">
+              <DollarSign className="w-4 h-4" />
+              Comissões
+            </TabsTrigger>
+          </TabsList>
+
+          {activeSubTab === "tenants" && (
+            <div className="flex items-center gap-2">
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="w-[150px]" data-testid="select-tenant-type-filter">
+                  <SelectValue placeholder="Filtrar por tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="master">Master</SelectItem>
+                  <SelectItem value="partner">Parceiros</SelectItem>
+                  <SelectItem value="client">Clientes</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={() => setShowCreateDialog(true)} data-testid="button-create-tenant">
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Tenant
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <TabsContent value="tenants">
+          {loadingTenants ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {tenants.map((tenant) => (
+                <Card key={tenant.id} className="hover:shadow-md transition-shadow">
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="p-2 rounded-lg bg-slate-100">
+                          {getTenantTypeIcon(tenant.tenantType)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium">{tenant.name}</h3>
+                            {getTenantTypeBadge(tenant.tenantType)}
+                            {getStatusBadge(tenant.status)}
+                          </div>
+                          <div className="flex items-center gap-4 text-sm text-slate-500 mt-1">
+                            {tenant.email && <span>{tenant.email}</span>}
+                            {tenant.plan && <span>Plano: {tenant.plan}</span>}
+                            {tenant.parentTenant && (
+                              <span className="flex items-center gap-1">
+                                <ArrowRight className="w-3 h-3" />
+                                {tenant.parentTenant.name}
+                              </span>
+                            )}
+                            {tenant.childCount !== undefined && tenant.childCount > 0 && (
+                              <span className="flex items-center gap-1">
+                                <Users className="w-3 h-3" />
+                                {tenant.childCount} filhos
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="ghost" size="sm" onClick={() => setEditingTenant(tenant)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        {tenant.tenantType !== "master" && (
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-red-500 hover:text-red-700"
+                            onClick={() => deleteTenantMutation.mutate(tenant.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {tenants.length === 0 && (
+                <div className="text-center py-12">
+                  <Building2 className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+                  <h3 className="text-lg font-medium text-slate-700">Nenhum tenant encontrado</h3>
+                  <p className="text-slate-500 text-sm">Clique em "Novo Tenant" para criar o primeiro</p>
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="plans">
+          <div className="flex justify-end mb-4">
+            <Button onClick={() => setShowCreatePlanDialog(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Novo Plano
+            </Button>
+          </div>
+          {loadingPlans ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-3">
+              {plans.map((plan) => (
+                <Card key={plan.id} className="hover:shadow-md transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">{plan.name}</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">{plan.tenantType}</Badge>
+                        <Button variant="ghost" size="sm" onClick={() => setEditingPlan(plan)}>
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-red-500 hover:text-red-700"
+                          onClick={() => deletePlanMutation.mutate(plan.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    <CardDescription>{plan.description}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Mensal:</span>
+                        <span className="font-medium">R$ {((plan.monthlyPrice || 0) / 100).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Anual:</span>
+                        <span className="font-medium">R$ {((plan.yearlyPrice || 0) / 100).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Usuários:</span>
+                        <span>{plan.maxUsers || 5}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Armazenamento:</span>
+                        <span>{plan.maxStorageMb || 1000} MB</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Trial:</span>
+                        <span>{plan.trialDays || 14} dias</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+              {plans.length === 0 && (
+                <div className="col-span-3 text-center py-12">
+                  <Package className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+                  <h3 className="text-lg font-medium text-slate-700">Nenhum plano cadastrado</h3>
+                  <p className="text-slate-500 text-sm">Os planos definem limites e features por tipo de tenant</p>
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="commissions">
+          <div className="text-center py-12">
+            <DollarSign className="h-12 w-12 mx-auto text-slate-300 mb-4" />
+            <h3 className="text-lg font-medium text-slate-700">Comissões de Parceiros</h3>
+            <p className="text-slate-500 text-sm">Gerencie comissões dos parceiros sobre vendas de clientes</p>
+            <p className="text-slate-400 text-xs mt-2">Funcionalidade disponível quando houver parceiros e clientes cadastrados</p>
+          </div>
+        </TabsContent>
+      </Tabs>
+
+      {showCreateDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Novo Tenant</CardTitle>
+              <CardDescription>Crie um novo tenant na hierarquia</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  value={newTenant.name}
+                  onChange={(e) => setNewTenant({ ...newTenant, name: e.target.value })}
+                  placeholder="Nome do tenant"
+                  data-testid="input-tenant-name"
+                />
               </div>
               <div>
-                <DialogTitle className="text-xl">Manus IA - Cérebro Central</DialogTitle>
-                <DialogDescription>
-                  Arquitetura do motor de inteligência que alimenta todos os agentes
-                </DialogDescription>
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={newTenant.email}
+                  onChange={(e) => setNewTenant({ ...newTenant, email: e.target.value })}
+                  placeholder="email@exemplo.com"
+                  data-testid="input-tenant-email"
+                />
               </div>
-            </div>
-          </DialogHeader>
-
-          <div className="grid grid-cols-4 gap-3 mt-2">
-            <div className="text-center p-3 rounded-lg bg-violet-50 border border-violet-200">
-              <p className="text-xl font-bold text-violet-600">{manusMetrics?.model || "GPT-4o"}</p>
-              <p className="text-[10px] text-muted-foreground uppercase mt-1">Modelo</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-slate-50 border">
-              <p className="text-xl font-bold">{manusMetrics?.metrics?.totalCalls || 0}</p>
-              <p className="text-[10px] text-muted-foreground uppercase mt-1">Chamadas IA</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-emerald-50 border border-emerald-200">
-              <p className="text-xl font-bold text-emerald-600">{((manusMetrics?.metrics?.totalTokens || 0) / 1000).toFixed(1)}k</p>
-              <p className="text-[10px] text-muted-foreground uppercase mt-1">Tokens</p>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-cyan-50 border border-cyan-200">
-              <p className="text-xl font-bold text-cyan-600">
-                {manusMetrics?.metrics?.uptime
-                  ? `${Math.floor(manusMetrics.metrics.uptime / 3600)}h ${Math.floor((manusMetrics.metrics.uptime % 3600) / 60)}m`
-                  : "---"}
-              </p>
-              <p className="text-[10px] text-muted-foreground uppercase mt-1">Uptime</p>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-violet-600" />
-              Arquitetura: Fluxo de Inteligência
-            </h3>
-            <div className="relative p-4 rounded-xl bg-slate-50 border">
-              <div className="flex flex-col items-center gap-2">
-                <div className="w-full p-3 rounded-lg bg-gradient-to-r from-violet-100 to-purple-100 border border-violet-200 text-center">
-                  <div className="flex items-center justify-center gap-2 mb-1">
-                    <Brain className="w-5 h-5 text-violet-600" />
-                    <span className="text-sm font-bold text-violet-700">ManusIntelligence (Singleton)</span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">GPT-4o + ToolManager + Context Enrichment</p>
+              <div>
+                <Label>Tipo</Label>
+                <Select value={newTenant.tenantType} onValueChange={(v) => setNewTenant({ ...newTenant, tenantType: v })}>
+                  <SelectTrigger data-testid="select-tenant-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="master">Master</SelectItem>
+                    <SelectItem value="partner">Parceiro</SelectItem>
+                    <SelectItem value="client">Cliente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {(newTenant.tenantType === "partner" || newTenant.tenantType === "client") && (
+                <div>
+                  <Label>Tenant Pai</Label>
+                  <Select value={newTenant.parentTenantId} onValueChange={(v) => setNewTenant({ ...newTenant, parentTenantId: v })}>
+                    <SelectTrigger data-testid="select-parent-tenant">
+                      <SelectValue placeholder="Selecione o tenant pai" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {partnerTenants.map((t) => (
+                        <SelectItem key={t.id} value={t.id.toString()}>
+                          {t.name} ({t.tenantType})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
+              )}
+              <div>
+                <Label>Plano</Label>
+                <Select value={newTenant.plan} onValueChange={(v) => setNewTenant({ ...newTenant, plan: v })}>
+                  <SelectTrigger data-testid="select-tenant-plan">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="starter">Starter</SelectItem>
+                    <SelectItem value="pro">Pro</SelectItem>
+                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={() => createTenantMutation.mutate(newTenant)}
+                  disabled={!newTenant.name || createTenantMutation.isPending}
+                  data-testid="button-save-tenant"
+                >
+                  {createTenantMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Criar Tenant
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <ArrowDown className="w-4 h-4" />
-                  <span className="text-[10px]">generate() / think()</span>
-                  <ArrowDown className="w-4 h-4" />
+      {editingTenant && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Editar Tenant</CardTitle>
+              <CardDescription>Atualize as informações do tenant</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  value={editingTenant.name}
+                  onChange={(e) => setEditingTenant({ ...editingTenant, name: e.target.value })}
+                  placeholder="Nome do tenant"
+                />
+              </div>
+              <div>
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={editingTenant.email || ""}
+                  onChange={(e) => setEditingTenant({ ...editingTenant, email: e.target.value })}
+                  placeholder="email@exemplo.com"
+                />
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select 
+                  value={editingTenant.status || "active"} 
+                  onValueChange={(v) => setEditingTenant({ ...editingTenant, status: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Ativo</SelectItem>
+                    <SelectItem value="trial">Trial</SelectItem>
+                    <SelectItem value="suspended">Suspenso</SelectItem>
+                    <SelectItem value="cancelled">Cancelado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Plano</Label>
+                <Select 
+                  value={editingTenant.plan || "free"} 
+                  onValueChange={(v) => setEditingTenant({ ...editingTenant, plan: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="free">Free</SelectItem>
+                    <SelectItem value="starter">Starter</SelectItem>
+                    <SelectItem value="pro">Pro</SelectItem>
+                    <SelectItem value="enterprise">Enterprise</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={() => setEditingTenant(null)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={() => updateTenantMutation.mutate(editingTenant)}
+                  disabled={!editingTenant.name || updateTenantMutation.isPending}
+                >
+                  {updateTenantMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Salvar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {showCreatePlanDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Novo Plano</CardTitle>
+              <CardDescription>Crie um novo plano de assinatura</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  value={newPlan.name}
+                  onChange={(e) => setNewPlan({ ...newPlan, name: e.target.value })}
+                  placeholder="Nome do plano"
+                />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Input
+                  value={newPlan.description}
+                  onChange={(e) => setNewPlan({ ...newPlan, description: e.target.value })}
+                  placeholder="Descrição do plano"
+                />
+              </div>
+              <div>
+                <Label>Tipo de Tenant</Label>
+                <Select value={newPlan.tenantType} onValueChange={(v) => setNewPlan({ ...newPlan, tenantType: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="master">Master</SelectItem>
+                    <SelectItem value="partner">Parceiro</SelectItem>
+                    <SelectItem value="client">Cliente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Preço Mensal (centavos)</Label>
+                  <Input
+                    type="number"
+                    value={newPlan.monthlyPrice}
+                    onChange={(e) => setNewPlan({ ...newPlan, monthlyPrice: parseInt(e.target.value) || 0 })}
+                  />
                 </div>
-
-                <div className="w-full p-3 rounded-lg bg-amber-50 border border-amber-200 text-center">
-                  <span className="text-xs font-medium text-amber-700">enrichWithContext()</span>
-                  <p className="text-[10px] text-muted-foreground mt-1">ToolManager.search_code → Contexto Semântico Automático</p>
-                </div>
-
-                <ArrowDown className="w-4 h-4 text-muted-foreground" />
-
-                <div className="grid grid-cols-3 gap-2 w-full">
-                  {[
-                    { name: "Architect", role: "Design & Arquitetura", icon: Layers, color: "text-blue-600", bg: "bg-blue-50 border-blue-200" },
-                    { name: "Generator", role: "Geração de Código", icon: Code, color: "text-green-600", bg: "bg-green-50 border-green-200" },
-                    { name: "Validator", role: "Validação TypeScript", icon: Shield, color: "text-amber-600", bg: "bg-amber-50 border-amber-200" },
-                    { name: "Executor", role: "Execução & Staging", icon: Terminal, color: "text-red-600", bg: "bg-red-50 border-red-200" },
-                    { name: "Researcher", role: "Pesquisa & Contexto", icon: Search, color: "text-cyan-600", bg: "bg-cyan-50 border-cyan-200" },
-                    { name: "Evolution", role: "Aprendizado Evolutivo", icon: Sparkles, color: "text-purple-600", bg: "bg-purple-50 border-purple-200" },
-                  ].map((agent) => (
-                    <div key={agent.name} className={`p-2.5 rounded-lg border ${agent.bg} text-center`}>
-                      <agent.icon className={`w-4 h-4 ${agent.color} mx-auto mb-1`} />
-                      <p className={`text-xs font-semibold ${agent.color}`}>{agent.name}</p>
-                      <p className="text-[9px] text-muted-foreground mt-0.5">{agent.role}</p>
-                    </div>
-                  ))}
+                <div>
+                  <Label>Preço Anual (centavos)</Label>
+                  <Input
+                    type="number"
+                    value={newPlan.yearlyPrice}
+                    onChange={(e) => setNewPlan({ ...newPlan, yearlyPrice: parseInt(e.target.value) || 0 })}
+                  />
                 </div>
               </div>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-amber-600" />
-              Ferramentas Disponíveis ({manusMetrics?.capabilities?.tools || 56})
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {[
-                { name: "Busca Semântica", count: 8, icon: Search, color: "text-violet-600" },
-                { name: "Arquivos", count: 12, icon: FileText, color: "text-blue-600" },
-                { name: "Comandos Shell", count: 6, icon: Terminal, color: "text-green-600" },
-                { name: "Web Research", count: 5, icon: Globe, color: "text-cyan-600" },
-                { name: "Knowledge Graph", count: 8, icon: Network, color: "text-amber-600" },
-                { name: "ERP & Database", count: 10, icon: Database, color: "text-emerald-600" },
-                { name: "Análise de Código", count: 7, icon: Code, color: "text-pink-600" },
-              ].map((cat) => (
-                <div key={cat.name} className="p-3 rounded-lg bg-slate-50 border hover:border-slate-300 transition-all">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <cat.icon className={`w-3.5 h-3.5 ${cat.color}`} />
-                    <span className={`text-xs font-medium ${cat.color}`}>{cat.count}</span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground">{cat.name}</p>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label>Máx. Usuários</Label>
+                  <Input
+                    type="number"
+                    value={newPlan.maxUsers}
+                    onChange={(e) => setNewPlan({ ...newPlan, maxUsers: parseInt(e.target.value) || 5 })}
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-emerald-600" />
-              Capacidades Ativas
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-              {[
-                "Cérebro Central (GPT-4o)",
-                "Enriquecimento de Contexto",
-                "Busca Semântica de Código",
-                "Knowledge Graph",
-                "Pipeline Autônomo de Dev",
-                "Orquestração de 6 Agentes",
-                "Leitura/Escrita de Arquivos",
-                "Execução de Comandos Shell",
-                "Web Research",
-                "Análise de Código",
-                "Validação TypeScript",
-                "Memória Evolutiva",
-              ].map((cap) => (
-                <div key={cap} className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border">
-                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  <span className="text-xs">{cap}</span>
+                <div>
+                  <Label>Armazenamento (MB)</Label>
+                  <Input
+                    type="number"
+                    value={newPlan.maxStorageMb}
+                    onChange={(e) => setNewPlan({ ...newPlan, maxStorageMb: parseInt(e.target.value) || 1000 })}
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
+                <div>
+                  <Label>Dias Trial</Label>
+                  <Input
+                    type="number"
+                    value={newPlan.trialDays}
+                    onChange={(e) => setNewPlan({ ...newPlan, trialDays: parseInt(e.target.value) || 14 })}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={() => setShowCreatePlanDialog(false)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={() => createPlanMutation.mutate(newPlan)}
+                  disabled={!newPlan.name || createPlanMutation.isPending}
+                >
+                  {createPlanMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Criar Plano
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-          <div className="mt-4 p-4 rounded-xl bg-slate-50 border">
-            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-              <Network className="w-4 h-4 text-violet-600" />
-              Diagrama de Fluxo
-            </h3>
-            <div className="font-mono text-[11px] text-slate-600 space-y-0.5 bg-white p-4 rounded-lg border">
-              <p className="text-violet-600">{"┌──────────────────────────────────────────────────────────┐"}</p>
-              <p className="text-violet-600">{"│         MANUS INTELLIGENCE  (Singleton GPT-4o)           │"}</p>
-              <p className="text-violet-600">{"├──────────────────────────────────────────────────────────┤"}</p>
-              <p>{"│  .generate(prompt)  →  enrichWithContext()  →  OpenAI   │"}</p>
-              <p>{"│  .think(prompt)     →  enrichWithContext()  →  OpenAI   │"}</p>
-              <p>{"│  .getMetrics()      →  calls, tokens, errors, uptime   │"}</p>
-              <p className="text-violet-600">{"├──────────────────────────────────────────────────────────┤"}</p>
-              <p className="text-amber-600">{"│  ToolManager.executeTool('search_code', query)          │"}</p>
-              <p className="text-amber-600">{"│  → Contexto semântico injetado automaticamente          │"}</p>
-              <p className="text-violet-600">{"├──────────────────────────────────────────────────────────┤"}</p>
-              <p className="text-blue-600">{"│  Architect  ──────┐                                     │"}</p>
-              <p className="text-green-600">{"│  Generator  ──────┤                                     │"}</p>
-              <p className="text-amber-600">{"│  Validator  ──────┤── Todos via manusIntelligence ──►   │"}</p>
-              <p className="text-red-600">{"│  Executor   ──────┤                                     │"}</p>
-              <p className="text-cyan-600">{"│  Researcher ──────┤                                     │"}</p>
-              <p className="text-purple-600">{"│  Evolution  ──────┘                                     │"}</p>
-              <p className="text-violet-600">{"├──────────────────────────────────────────────────────────┤"}</p>
-              <p className="text-emerald-600">{"│  /api/manus/health  →  Status, métricas, capacidades   │"}</p>
-              <p className="text-violet-600">{"└──────────────────────────────────────────────────────────┘"}</p>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {editingPlan && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle>Editar Plano</CardTitle>
+              <CardDescription>Atualize as informações do plano</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Nome</Label>
+                <Input
+                  value={editingPlan.name}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                  placeholder="Nome do plano"
+                />
+              </div>
+              <div>
+                <Label>Descrição</Label>
+                <Input
+                  value={editingPlan.description || ""}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, description: e.target.value })}
+                  placeholder="Descrição do plano"
+                />
+              </div>
+              <div>
+                <Label>Tipo de Tenant</Label>
+                <Select 
+                  value={editingPlan.tenantType || "client"} 
+                  onValueChange={(v) => setEditingPlan({ ...editingPlan, tenantType: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="master">Master</SelectItem>
+                    <SelectItem value="partner">Parceiro</SelectItem>
+                    <SelectItem value="client">Cliente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Preço Mensal (centavos)</Label>
+                  <Input
+                    type="number"
+                    value={editingPlan.monthlyPrice || 0}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, monthlyPrice: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+                <div>
+                  <Label>Preço Anual (centavos)</Label>
+                  <Input
+                    type="number"
+                    value={editingPlan.yearlyPrice || 0}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, yearlyPrice: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <Label>Máx. Usuários</Label>
+                  <Input
+                    type="number"
+                    value={editingPlan.maxUsers || 5}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, maxUsers: parseInt(e.target.value) || 5 })}
+                  />
+                </div>
+                <div>
+                  <Label>Armazenamento (MB)</Label>
+                  <Input
+                    type="number"
+                    value={editingPlan.maxStorageMb || 1000}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, maxStorageMb: parseInt(e.target.value) || 1000 })}
+                  />
+                </div>
+                <div>
+                  <Label>Dias Trial</Label>
+                  <Input
+                    type="number"
+                    value={editingPlan.trialDays || 14}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, trialDays: parseInt(e.target.value) || 14 })}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end pt-4">
+                <Button variant="outline" onClick={() => setEditingPlan(null)}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={() => updatePlanMutation.mutate(editingPlan)}
+                  disabled={!editingPlan.name || updatePlanMutation.isPending}
+                >
+                  {updatePlanMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : null}
+                  Salvar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }

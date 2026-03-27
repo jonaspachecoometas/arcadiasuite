@@ -800,7 +800,7 @@ ${JSON.stringify(sampleData.slice(0, 10), null, 2)}
 Pergunta do usuário: ${question}`;
 
       const response = await openai.chat.completions.create({
-        model: "arcadia-agent",
+        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }

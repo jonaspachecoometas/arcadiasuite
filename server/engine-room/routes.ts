@@ -1,11 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { restartManagedService, stopManagedService, getManagedServiceInfo, getManagedServiceLogs } from "../index";
-import { manusIntelligence } from "../blackboard/BaseBlackboardAgent";
 
 interface EngineConfig {
   name: string;
   displayName: string;
-  type: "python" | "php" | "node" | "java" | "ai";
+  type: "python" | "php" | "node" | "java";
   port: number;
   healthPath: string;
   category: "erp" | "intelligence" | "data" | "fiscal" | "automation";
@@ -14,22 +13,13 @@ interface EngineConfig {
 
 const ENGINES: EngineConfig[] = [
   {
-    name: "manus-ia",
-    displayName: "Manus IA (Cerebro Central)",
-    type: "ai",
-    port: 5000,
-    healthPath: "/api/manus/health",
-    category: "intelligence",
-    description: "Motor de IA Central - GPT-4o, 56 Tools, Knowledge Graph, Dev Pipeline",
-  },
-  {
     name: "plus",
     displayName: "Arcadia Plus (ERP)",
     type: "php",
     port: 8080,
-    healthPath: "/",
+    healthPath: "/api/health",
     category: "erp",
-    description: "Motor Plus - PDV, NF-e, Estoque, Financeiro",
+    description: "ERP completo Laravel - PDV, NF-e, Estoque, Financeiro",
   },
   {
     name: "contabil",
@@ -94,21 +84,12 @@ async function checkEngineHealth(engine: EngineConfig): Promise<any> {
 
   try {
     const start = Date.now();
-    const headers: Record<string, string> = {};
-    if (engine.name === "manus-ia") {
-      headers["x-internal-check"] = "engine-room";
-    }
-    const fetchOptions: any = { signal: controller.signal, headers };
-    if (engine.name === "plus") {
-      fetchOptions.redirect = "manual";
-    }
-    const response = await fetch(url, fetchOptions);
+    const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeout);
     const elapsed = Date.now() - start;
 
-    const isRedirect = response.status >= 300 && response.status < 400;
-    if (response.ok || (engine.name === "plus" && isRedirect)) {
-      const data = response.ok ? await response.json().catch(() => ({})) : { redirect: true, location: response.headers.get("location") };
+    if (response.ok) {
+      const data = await response.json().catch(() => ({}));
       return {
         ...engine,
         status: "online",
@@ -396,61 +377,6 @@ export function registerEngineRoomRoutes(app: Express): void {
       res.json({ engine: engineName, lines: logs.length, logs });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/manus/health", async (req: Request, res: Response) => {
-    try {
-      const isInternal = req.headers["x-internal-check"] === "engine-room";
-      if (!isInternal && !req.isAuthenticated()) {
-        return res.status(401).json({ error: "Not authenticated" });
-      }
-
-      const metrics = manusIntelligence.getMetrics();
-      
-      let toolCount = 0;
-      try {
-        const { toolManager } = await import("../autonomous/tools");
-        toolCount = (toolManager as any).getToolNames?.()?.length || (toolManager as any).tools?.size || 56;
-      } catch {
-        toolCount = 56;
-      }
-
-      let agentCount = 0;
-      try {
-        const { getAgentsStatus } = await import("../blackboard/agents");
-        const agents = getAgentsStatus();
-        agentCount = agents.filter((a: any) => a.running).length;
-      } catch {}
-
-      const aiConfigured = metrics.healthy;
-      const engineStatus = aiConfigured ? "online" : "error";
-
-      res.json({
-        status: engineStatus,
-        engine: "Manus IA",
-        version: "2.0.0",
-        model: metrics.model,
-        database: "connected",
-        aiConfigured,
-        capabilities: {
-          tools: toolCount,
-          agents: agentCount,
-          knowledgeGraph: true,
-          semanticSearch: true,
-          devPipeline: true,
-          autonomousDev: true,
-        },
-        metrics: {
-          totalCalls: metrics.callCount,
-          totalTokens: metrics.tokenCount,
-          errorCount: metrics.errorCount,
-          lastCallAt: metrics.lastCallAt || null,
-          uptime: process.uptime(),
-        },
-      });
-    } catch (error: any) {
-      res.status(500).json({ status: "error", error: error.message });
     }
   });
 

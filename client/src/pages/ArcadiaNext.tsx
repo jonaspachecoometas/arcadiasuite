@@ -150,18 +150,18 @@ const api = {
 
 function DashboardModule({ tenantId }: { tenantId: number }) {
   const { data: stats = { customers: 0, suppliers: 0, products: 0, salesOrders: 0, purchaseOrders: 0 } } = useQuery({
-    queryKey: ["/api/soe/stats", tenantId],
-    queryFn: () => api.get(`/api/soe/stats?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/stats", tenantId],
+    queryFn: () => api.get(`/api/erp/stats?tenantId=${tenantId}`)
   });
 
   const { data: customers = [] } = useQuery<Customer[]>({
-    queryKey: ["/api/soe/customers", tenantId],
-    queryFn: () => api.get(`/api/soe/customers?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/customers", tenantId],
+    queryFn: () => api.get(`/api/erp/customers?tenantId=${tenantId}`)
   });
 
   const { data: salesOrders = [] } = useQuery<SalesOrder[]>({
-    queryKey: ["/api/soe/sales-orders", tenantId],
-    queryFn: () => api.get(`/api/soe/sales-orders?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/sales-orders", tenantId],
+    queryFn: () => api.get(`/api/erp/sales-orders?tenantId=${tenantId}`)
   });
 
   const totalRevenue = salesOrders
@@ -296,14 +296,14 @@ function PersonsModule({ tenantId }: { tenantId: number }) {
   const [formStatus, setFormStatus] = useState("active");
 
   const { data: persons = [], isLoading, refetch } = useQuery<Person[]>({
-    queryKey: ["/api/soe/persons", tenantId, roleFilter],
-    queryFn: () => api.get(`/api/soe/persons?tenantId=${tenantId}&role=${roleFilter}`)
+    queryKey: ["/api/erp/persons", tenantId, roleFilter],
+    queryFn: () => api.get(`/api/erp/persons?tenantId=${tenantId}&role=${roleFilter}`)
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post("/api/soe/persons", { ...data, tenantId }),
+    mutationFn: (data: any) => api.post("/api/erp/persons", { ...data, tenantId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/persons"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Pessoa criada com sucesso!" });
@@ -312,9 +312,9 @@ function PersonsModule({ tenantId }: { tenantId: number }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/soe/persons/${id}`, data),
+    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/erp/persons/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/persons"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Pessoa atualizada!" });
@@ -322,9 +322,9 @@ function PersonsModule({ tenantId }: { tenantId: number }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/soe/persons/${id}`),
+    mutationFn: (id: number) => api.delete(`/api/erp/persons/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/persons"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/persons"] });
       toast({ title: "Pessoa excluída!" });
     }
   });
@@ -601,15 +601,15 @@ function CustomersModule({ tenantId }: { tenantId: number }) {
   const [formStatus, setFormStatus] = useState("active");
 
   const { data: customers = [], isLoading, refetch } = useQuery<Customer[]>({
-    queryKey: ["/api/soe/customers", tenantId],
-    queryFn: () => api.get(`/api/soe/customers?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/customers", tenantId],
+    queryFn: () => api.get(`/api/erp/customers?tenantId=${tenantId}`)
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post("/api/soe/customers", { ...data, tenantId }),
+    mutationFn: (data: any) => api.post("/api/erp/customers", { ...data, tenantId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/customers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Cliente criado com sucesso!" });
@@ -618,9 +618,9 @@ function CustomersModule({ tenantId }: { tenantId: number }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/soe/customers/${id}`, data),
+    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/erp/customers/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/customers"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Cliente atualizado!" });
@@ -628,10 +628,10 @@ function CustomersModule({ tenantId }: { tenantId: number }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/soe/customers/${id}`),
+    mutationFn: (id: number) => api.delete(`/api/erp/customers/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/customers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/customers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       toast({ title: "Cliente excluído!" });
     }
   });
@@ -837,15 +837,15 @@ function SuppliersModule({ tenantId }: { tenantId: number }) {
   const [formStatus, setFormStatus] = useState("active");
 
   const { data: suppliers = [], isLoading, refetch } = useQuery<Supplier[]>({
-    queryKey: ["/api/soe/suppliers", tenantId],
-    queryFn: () => api.get(`/api/soe/suppliers?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/suppliers", tenantId],
+    queryFn: () => api.get(`/api/erp/suppliers?tenantId=${tenantId}`)
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post("/api/soe/suppliers", { ...data, tenantId }),
+    mutationFn: (data: any) => api.post("/api/erp/suppliers", { ...data, tenantId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/suppliers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Fornecedor criado com sucesso!" });
@@ -853,9 +853,9 @@ function SuppliersModule({ tenantId }: { tenantId: number }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/soe/suppliers/${id}`, data),
+    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/erp/suppliers/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/suppliers"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Fornecedor atualizado!" });
@@ -863,10 +863,10 @@ function SuppliersModule({ tenantId }: { tenantId: number }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/soe/suppliers/${id}`),
+    mutationFn: (id: number) => api.delete(`/api/erp/suppliers/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/suppliers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/suppliers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       toast({ title: "Fornecedor excluído!" });
     }
   });
@@ -1052,8 +1052,8 @@ function ProductsModule({ tenantId }: { tenantId: number }) {
   const [formTaxGroup, setFormTaxGroup] = useState("");
 
   const { data: products = [], isLoading, refetch } = useQuery<Product[]>({
-    queryKey: ["/api/soe/products", tenantId],
-    queryFn: () => api.get(`/api/soe/products?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/products", tenantId],
+    queryFn: () => api.get(`/api/erp/products?tenantId=${tenantId}`)
   });
 
   const { data: taxGroups = [] } = useQuery<TaxGroup[]>({
@@ -1062,10 +1062,10 @@ function ProductsModule({ tenantId }: { tenantId: number }) {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post("/api/soe/products", { ...data, tenantId }),
+    mutationFn: (data: any) => api.post("/api/erp/products", { ...data, tenantId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/products"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Produto criado com sucesso!" });
@@ -1073,9 +1073,9 @@ function ProductsModule({ tenantId }: { tenantId: number }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/soe/products/${id}`, data),
+    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/erp/products/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/products"] });
       setShowDialog(false);
       setEditingItem(null);
       toast({ title: "Produto atualizado!" });
@@ -1083,10 +1083,10 @@ function ProductsModule({ tenantId }: { tenantId: number }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/soe/products/${id}`),
+    mutationFn: (id: number) => api.delete(`/api/erp/products/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/products"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       toast({ title: "Produto excluído!" });
     }
   });
@@ -1316,20 +1316,20 @@ function SalesModule({ tenantId }: { tenantId: number }) {
   const [formCustomerId, setFormCustomerId] = useState("");
 
   const { data: salesOrders = [], isLoading, refetch } = useQuery<SalesOrder[]>({
-    queryKey: ["/api/soe/sales-orders", tenantId],
-    queryFn: () => api.get(`/api/soe/sales-orders?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/sales-orders", tenantId],
+    queryFn: () => api.get(`/api/erp/sales-orders?tenantId=${tenantId}`)
   });
 
   const { data: customers = [] } = useQuery<Customer[]>({
-    queryKey: ["/api/soe/customers", tenantId],
-    queryFn: () => api.get(`/api/soe/customers?tenantId=${tenantId}`)
+    queryKey: ["/api/erp/customers", tenantId],
+    queryFn: () => api.get(`/api/erp/customers?tenantId=${tenantId}`)
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: any) => api.post("/api/soe/sales-orders", { ...data, tenantId }),
+    mutationFn: (data: any) => api.post("/api/erp/sales-orders", { ...data, tenantId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/sales-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/sales-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       setShowDialog(false);
       setEditingItem(null);
       setFormCustomerId("");
@@ -1338,10 +1338,10 @@ function SalesModule({ tenantId }: { tenantId: number }) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/soe/sales-orders/${id}`, data),
+    mutationFn: ({ id, data }: { id: number; data: any }) => api.put(`/api/erp/sales-orders/${id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/sales-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/sales-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       setShowDialog(false);
       setEditingItem(null);
       setFormCustomerId("");
@@ -1350,18 +1350,18 @@ function SalesModule({ tenantId }: { tenantId: number }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/soe/sales-orders/${id}`),
+    mutationFn: (id: number) => api.delete(`/api/erp/sales-orders/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/sales-orders"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/sales-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/stats"] });
       toast({ title: "Pedido excluído!" });
     }
   });
 
   const confirmMutation = useMutation({
-    mutationFn: (id: number) => api.post(`/api/soe/sales-orders/${id}/confirm`, {}),
+    mutationFn: (id: number) => api.post(`/api/erp/sales-orders/${id}/confirm`, {}),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/soe/sales-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/erp/sales-orders"] });
       toast({ title: "Pedido confirmado!" });
     }
   });
@@ -1728,7 +1728,7 @@ export default function ArcadiaNext() {
               <Building2 className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-lg">Arcádia SOE</h1>
+              <h1 className="font-bold text-lg">Arcádia ERP</h1>
               <p className="text-xs text-muted-foreground">Gestão Empresarial</p>
             </div>
           </div>

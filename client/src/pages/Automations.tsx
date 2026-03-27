@@ -386,7 +386,7 @@ function AutomationCard({ automation, onRefresh }: { automation: Automation; onR
               size="icon"
               onClick={() => runMutation.mutate()}
               disabled={runMutation.isPending}
-              className="h-8 w-8 flex items-center justify-center text-white/50 hover:text-[#c89b3c] hover:bg-[#c89b3c]/10"
+              className="h-8 w-8 text-white/50 hover:text-[#c89b3c] hover:bg-[#c89b3c]/10"
               title="Executar agora"
               data-testid={`run-automation-${automation.id}`}
             >

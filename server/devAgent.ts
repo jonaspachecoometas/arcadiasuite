@@ -3,8 +3,6 @@ import { manusService } from "./manus/service";
 import { db } from "../db/index";
 import { sql } from "drizzle-orm";
 
-
-
 const router = Router();
 
 const DEV_AGENT_CONTEXT = `CONTEXTO ESPECIAL - DEV AGENT:
@@ -79,7 +77,9 @@ Usuário: ${message}
 
 Responda como Dev Agent, criando os recursos solicitados:`;
 
-    const responseContent = await manusService.runSync(userId, fullPrompt, []);
+    const result = await manusService.run(userId, fullPrompt, []);
+    
+    const responseContent = result.finalResponse || "Desculpe, não consegui processar sua solicitação.";
 
     const jsonMatch = responseContent.match(/```json\s*([\s\S]*?)\s*```/);
     let action = null;

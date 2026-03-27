@@ -27,8 +27,7 @@ export function SupersetDashboard({
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "unavailable">("loading");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
-  // Busca token e embeddedId (UUID) do backend
-  const fetchTokenData = useCallback(async (): Promise<{ token: string; embeddedId: string }> => {
+  const fetchGuestToken = useCallback(async (): Promise<string> => {
     const resp = await fetch("/api/superset/guest-token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -39,7 +38,8 @@ export function SupersetDashboard({
       const err = await resp.json().catch(() => ({ error: "Erro desconhecido" }));
       throw new Error(err.error || `HTTP ${resp.status}`);
     }
-    return resp.json();
+    const { token } = await resp.json();
+    return token;
   }, [dashboardId]);
 
   const loadDashboard = useCallback(async () => {
@@ -56,9 +56,6 @@ export function SupersetDashboard({
         return;
       }
 
-      // Resolve embeddedId (UUID) e obtém token inicial
-      const { embeddedId } = await fetchTokenData();
-
       // Importa SDK dinamicamente (só quando necessário)
       const { embedDashboard } = await import("@superset-ui/embedded-sdk");
 
@@ -68,13 +65,10 @@ export function SupersetDashboard({
       }
 
       sdkRef.current = await embedDashboard({
-        id: embeddedId,   // UUID do embedded config (não o slug)
-        supersetDomain: "https://bi.onboardbi.com.br",
+        id: dashboardId,
+        supersetDomain: window.location.origin + "/superset",
         mountPoint: containerRef.current,
-        fetchGuestToken: async () => {
-          const { token } = await fetchTokenData();
-          return token;
-        },
+        fetchGuestToken,
         dashboardUiConfig: {
           hideTitle: true,
           hideChartControls: false,
@@ -82,21 +76,18 @@ export function SupersetDashboard({
         },
       });
 
-      // O SDK cria um <iframe> sem width/height explícitos — forçar 100%
-      const iframe = containerRef.current?.querySelector("iframe");
-      if (iframe) {
-        iframe.style.width = "100%";
-        iframe.style.height = "100%";
-        iframe.style.border = "none";
-      }
-
       setStatus("ready");
     } catch (err: any) {
-      console.error("[SupersetDashboard] Erro:", err.message, err);
-      setErrorMsg(err.message || "Erro desconhecido");
-      setStatus("error");
+      console.error("[SupersetDashboard] Erro:", err.message);
+      // Se SDK não estiver instalado, usa iframe como fallback
+      if (err.message?.includes("Cannot find module") || err.message?.includes("embedDashboard")) {
+        setStatus("unavailable");
+      } else {
+        setErrorMsg(err.message);
+        setStatus("error");
+      }
     }
-  }, [dashboardId, fetchTokenData]);
+  }, [dashboardId, fetchGuestToken]);
 
   useEffect(() => {
     loadDashboard();
@@ -109,16 +100,13 @@ export function SupersetDashboard({
 
   if (status === "unavailable") {
     return (
-      <div className={`flex flex-col items-center justify-center gap-4 rounded-xl border border-yellow-100 bg-yellow-50 ${className}`} style={{ height: heightStyle }}>
-        <AlertTriangle className="w-8 h-8 text-yellow-500" />
-        <div className="text-center">
-          <p className="font-medium text-yellow-800 text-sm">Arcádia Insights indisponível</p>
-          <p className="text-yellow-600 text-xs mt-1">O serviço de BI está iniciando. Tente novamente em alguns segundos.</p>
-        </div>
-        <button onClick={loadDashboard} className="flex items-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm hover:bg-yellow-700 transition-colors">
-          <RefreshCw className="w-4 h-4" /> Tentar novamente
-        </button>
-        <a href="https://bi.onboardbi.com.br" target="_blank" rel="noopener noreferrer" className="text-xs text-yellow-700 underline">Abrir em nova aba</a>
+      <div className={`rounded-xl overflow-hidden border border-[#c89b3c]/20 bg-white shadow-sm ${className}`} style={{ height: heightStyle }}>
+        <iframe
+          src="/superset/login"
+          className="w-full h-full border-0"
+          title="Arcádia Insights — Apache Superset"
+          allow="fullscreen"
+        />
       </div>
     );
   }
@@ -154,7 +142,7 @@ export function SupersetDashboard({
 
       {showOpenLink && status === "ready" && (
         <a
-          href="https://bi.onboardbi.com.br"
+          href="/superset"
           target="_blank"
           rel="noopener noreferrer"
           className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-1 bg-white/80 backdrop-blur text-[#1f334d] text-xs rounded-lg border border-gray-200 hover:bg-white transition-colors shadow-sm"
@@ -163,16 +151,9 @@ export function SupersetDashboard({
         </a>
       )}
 
-      <style>{`
-        .superset-embed-container iframe {
-          width: 100% !important;
-          height: 100% !important;
-          border: none !important;
-        }
-      `}</style>
       <div
         ref={containerRef}
-        className="superset-embed-container w-full h-full rounded-xl overflow-hidden border border-[#c89b3c]/20"
+        className="w-full h-full rounded-xl overflow-hidden border border-[#c89b3c]/20"
       />
     </div>
   );

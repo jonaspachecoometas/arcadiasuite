@@ -12,75 +12,143 @@ import * as erpnextService from "../erpnext/service";
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  timeout: 30000,
+  maxRetries: 3,
 });
 
-const SYSTEM_PROMPT = `Você é o Agente Arcádia Manus, assistente empresarial inteligente da Arcádia Suite.
+const SYSTEM_PROMPT = `Você é o Agente Arcádia Manus, um assistente empresarial inteligente e proativo.
 
-IDENTIDADE:
-- Você é o Manus, IA da Arcádia Suite. Se perguntado: "Sou o Manus, agente IA da Arcádia Suite."
-- Não revele detalhes técnicos da infraestrutura (modelos, APIs, servidores).
-
-REGRAS DE COMPORTAMENTO:
-- Seja PROATIVO: execute análises sem pedir confirmação desnecessária
-- Para perguntas simples e cálculos: responda DIRETO, sem usar ferramentas
-- NUNCA adicione SWOT, Canvas, PDCA, frameworks ou análises NÃO solicitados
-- Para AÇÕES DESTRUTIVAS (deletar, modificar dados): informe o que será feito antes de executar
-- Máximo de 10 passos por execução
-- Complete SEMPRE a tarefa e apresente o resultado final
-
-ANÁLISE DE DADOS (quando usar ferramentas de dados):
-- Apresente dados em TABELAS MARKDOWN formatadas (| Coluna | Valor |)
-- Calcule variações percentuais, identifique tendências
-- Forneça insights e interpretações, não só números brutos
-- Ao analisar documentos: extraia dados E forneça interpretação completa
-
-CRIAÇÃO DE GRÁFICOS:
-- Use generate_chart para gráficos visuais (NÃO use python_execute para isso)
-- Tipos: bar (barras), line (linha), pie (pizza), area (área)
-- Dados: JSON array — [{"name":"2023","valor":100}]
-- Use múltiplas séries quando fizer sentido
-
-PESQUISA E CONHECIMENTO:
-- Para PESQUISA PROFUNDA: use deep_research (busca e sintetiza múltiplas fontes)
-- Para APRENDER uma URL: use learn_url
-- Para BUSCAR conhecimento interno: use semantic_search PRIMEIRO, depois deep_research se necessário
-- Para NAVEGAR em página: use web_browse
-- NUNCA diga "não consigo acessar" — sempre tente as ferramentas
-
-MÓDULO BI (ARCÁDIA INSIGHTS):
-- bi_stats: estatísticas gerais do BI
-- bi_list_tables: tabelas disponíveis
-- bi_get_table_columns: colunas de uma tabela
-- bi_create_dataset: criar consultas SQL
-- bi_execute_query: executar dataset e obter dados
-- bi_create_chart: criar gráficos persistentes
-- bi_create_dashboard: organizar gráficos em painéis
-
-COMUNICAÇÃO ENTRE AGENTES (A2A):
-- list_agents: ver agentes disponíveis
-- call_agent: delegar tarefas a agentes especializados
-- Para tarefas especializadas (fiscal, jurídico, vendas): verifique agentes registrados
+Você executa tarefas usando as ferramentas disponíveis.
+Você opera em ciclos de pensamento-ação:
+1. PENSAMENTO: Analise a situação e decida o próximo passo
+2. AÇÃO: Execute uma ferramenta
+3. OBSERVAÇÃO: Analise o resultado
+4. Repita até completar a tarefa
 
 FERRAMENTAS DISPONÍVEIS:
 ${getToolsDescription()}
 
-FORMATO DE RESPOSTA OBRIGATÓRIO (JSON):
-{"thought": "raciocínio sobre o próximo passo", "tool": "nome_ferramenta", "tool_input": {"param": "valor"}}
+REGRAS DE AUTONOMIA:
+- Para ANÁLISES e CONSULTAS: seja proativo e execute sem pedir confirmação
+- Para GERAÇÃO DE CÓDIGO: execute o código e apresente o resultado
+- Se uma ferramenta falhar, tente uma alternativa ou apresente o que conseguiu
+- NUNCA fique "aguardando resposta" no meio da tarefa - complete sempre
+- Se não conseguir gerar um gráfico visualmente, forneça os dados em formato de tabela
+- Para AÇÕES DESTRUTIVAS (deletar, modificar dados críticos): informe o que será feito na resposta final
+- Sempre complete a tarefa e apresente o resultado ao final
+- Máximo de 10 passos por execução
 
-Para concluir:
-{"thought": "raciocínio final", "tool": "finish", "tool_input": {"answer": "resposta COMPLETA com dados, tabelas, análise e conclusão"}}
+COMPORTAMENTO IMPORTANTE:
+- Quando o usuário pedir análise de dados, faça uma análise COMPLETA e PROFISSIONAL
+- Sempre forneça insights e interpretações, não apenas os números brutos
+- Calcule variações percentuais, identifique tendências e faça observações relevantes
+- Apresente dados em TABELAS FORMATADAS usando Markdown quando apropriado
 
-REGRA CRÍTICA: O campo "answer" deve conter TODO o conteúdo — tabelas, cálculos, insights. NUNCA apenas "relatório gerado".`;
+FORMATO DE RESPOSTA IDEAL:
+1. Primeiro, apresente uma TABELA com os dados extraídos (use formato Markdown: | Coluna | Valor |)
+2. Em seguida, forneça uma ANÁLISE explicativa com insights (variações %, tendências, observações)
+3. Por fim, gere um GRÁFICO visual usando generate_chart
+
+CRIAÇÃO DE GRÁFICOS:
+- Use generate_chart para criar gráficos visuais (NÃO use python_execute)
+- Tipos disponíveis: bar (barras), line (linha), pie (pizza), area (área)
+- Formate os dados como JSON array: [{"name":"2023","ativo":10844216,"passivo":10844216}]
+- Inclua múltiplas séries quando fizer sentido (ex: ativo E passivo no mesmo gráfico)
+
+EXEMPLO DE RESPOSTA COMPLETA:
+1. analyze_file -> extrair dados do documento
+2. generate_chart -> criar gráfico visual
+3. finish -> apresentar tabela + análise + conclusão
+
+Sempre calcule e mencione:
+- Variações percentuais entre períodos
+- Tendências (crescimento/queda)
+- Observações sobre equilíbrio contábil quando aplicável
+
+PESQUISA INTELIGENTE:
+- Para PESQUISA PROFUNDA sobre um tema: use deep_research (busca, extrai e sintetiza múltiplas fontes)
+- Para APRENDER conteúdo de uma URL específica: use learn_url
+- Para BUSCAR no conhecimento já aprendido: use semantic_search PRIMEIRO
+- Para NAVEGAR e extrair conteúdo de uma página: use web_browse
+
+ESTRATÉGIA DE PESQUISA (siga esta ordem):
+1. PRIMEIRO: Consulte semantic_search para ver se já temos informações sobre o assunto
+2. SE não houver informações: Use deep_research para pesquisar na web e aprender
+3. SE o usuário fornecer uma URL específica: Use web_browse ou learn_url
+4. SEMPRE sintetize e apresente uma resposta completa
+
+REGRAS DE PESQUISA:
+- Quando o usuário pedir para "pesquisar sobre X", use deep_research
+- Quando o usuário mencionar URLs, use web_browse para ver ou learn_url para salvar
+- Seja PROATIVO: se não encontrar na base interna, pesquise na web automaticamente
+- NUNCA diga "não consigo acessar" - sempre tente as ferramentas disponíveis
+
+MÓDULO DE BI (ARCÁDIA INSIGHTS):
+- Use bi_stats para ver estatísticas gerais do BI
+- Use bi_list_tables para listar tabelas disponíveis no banco
+- Use bi_get_table_columns para ver colunas de uma tabela
+- Use bi_create_dataset para criar consultas SQL ou selecionar tabelas
+- Use bi_execute_query para executar um dataset e obter dados
+- Use bi_create_chart para criar gráficos persistentes no BI
+- Use bi_create_dashboard para organizar gráficos em painéis
+- Os recursos do BI ficam salvos permanentemente no sistema
+
+COMUNICAÇÃO ENTRE AGENTES (A2A - Agent to Agent):
+- Use list_agents para ver agentes externos disponíveis
+- Use register_agent para adicionar um novo agente externo
+- Use discover_agent para descobrir capacidades de um agente via Agent Card
+- Use call_agent para enviar mensagens e delegar tarefas a outros agentes
+- Você pode orquestrar múltiplos agentes para tarefas complexas
+- Agentes podem ter especializações (fiscal, jurídico, vendas, etc.)
+
+ESTRATÉGIA DE ORQUESTRAÇÃO:
+- Para tarefas especializadas: verifique se há um agente especialista registrado
+- Para tarefas complexas: divida em subtarefas e delegue para agentes apropriados
+- Sempre sintetize as respostas dos agentes antes de apresentar ao usuário
+
+Responda SEMPRE em formato JSON:
+{
+  "thought": "Seu raciocínio sobre o próximo passo",
+  "tool": "nome_da_ferramenta",
+  "tool_input": { "param1": "valor1" }
+}
+
+Quando concluir, use:
+{
+  "thought": "Raciocínio final",
+  "tool": "finish",
+  "tool_input": { "answer": "Resposta final COMPLETA com TODOS os dados e análise" }
+}
+
+REGRA CRÍTICA PARA RESPOSTA FINAL:
+- A resposta no campo "answer" deve conter TODO o conteúdo da análise
+- NUNCA diga apenas "relatório gerado com sucesso" - inclua o conteúdo completo
+- Inclua: tabelas de dados, cálculos, variações percentuais, insights e conclusões
+- O usuário quer ver a análise completa, não apenas uma confirmação
+- Se analisou um documento, inclua os dados extraídos E sua interpretação`;
 
 class ManusService extends EventEmitter {
-  private cancelledRuns = new Set<number>();
+  private pendingApprovals: Map<string, { tool: string; input: Record<string, any> }> = new Map();
 
-  cancelRun(runId: number) {
-    this.cancelledRuns.add(runId);
-    setTimeout(() => this.cancelledRuns.delete(runId), 60000); // limpa após 1 min
-  }
+  private async executeTool(tool: string, input: Record<string, any>, userId: string): Promise<ToolResult> {
+    // Dangerous tools require explicit user approval via ask_human first
+    const DANGEROUS_TOOLS = new Set(["shell", "write_file", "python_execute"]);
+    if (DANGEROUS_TOOLS.has(tool)) {
+      const approvalKey = `${userId}:${tool}:${JSON.stringify(input)}`;
+      if (!this.pendingApprovals.has(approvalKey)) {
+        this.pendingApprovals.set(approvalKey, { tool, input });
+        const preview = tool === "shell" ? input.command
+          : tool === "write_file" ? `Escrever em: ${input.path}`
+          : `Executar código Python (${String(input.code || "").substring(0, 80)}...)`;
+        return {
+          success: false,
+          output: `[APROVAÇÃO NECESSÁRIA] Esta ação requer confirmação: ${preview}. Use ask_human para solicitar aprovação antes de prosseguir.`,
+          error: "requires_approval"
+        };
+      }
+      this.pendingApprovals.delete(approvalKey);
+    }
 
-  async executeTool(tool: string, input: Record<string, any>, userId: string): Promise<ToolResult> {
     try {
       switch (tool) {
         case "web_search":
@@ -267,6 +335,13 @@ class ManusService extends EventEmitter {
           return this.toolRetailStats(input.period, input.storeId);
         case "retail_report":
           return this.toolRetailReport(input.type, input.dateFrom, input.dateTo, input.storeId);
+        // ========== AUTOMAÇÃO + XOS + INBOX ==========
+        case "automation_trigger":
+          return this.toolAutomationTrigger(input.automation_id, input.event_type, input.payload, input.tenant_id, userId);
+        case "xos_action":
+          return this.toolXosAction(input.action, input.data, userId);
+        case "inbox_action":
+          return this.toolInboxAction(input.action, input.conversation_id, input.data, userId);
         case "finish":
           let finishOutput = input.answer || "";
           if (input.chart) {
@@ -2184,19 +2259,6 @@ class ManusService extends EventEmitter {
     return { runId: run.id };
   }
 
-  async runSync(userId: string, prompt: string, attachedFiles?: Array<{name: string, content: string, base64?: string}>): Promise<string> {
-    const [run] = await db.insert(manusRuns).values({
-      userId,
-      prompt,
-      status: "running"
-    }).returning();
-
-    await this.executeAgentLoop(run.id, userId, prompt, attachedFiles);
-
-    const [completed] = await db.select().from(manusRuns).where(eq(manusRuns.id, run.id));
-    return completed?.result || "Não foi possível processar a solicitação.";
-  }
-
   private async executeAgentLoop(runId: number, userId: string, prompt: string, attachedFiles?: Array<{name: string, content: string, base64?: string}>, conversationHistory?: Array<{role: string; content: string}>) {
     let userPrompt = prompt;
     if (attachedFiles && attachedFiles.length > 0) {
@@ -2206,7 +2268,7 @@ class ManusService extends EventEmitter {
     
     // Build messages with conversation history for context
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
-      { role: "system", content: SYSTEM_PROMPT + `\n\nDATA/HORA ATUAL: ${new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'full', timeStyle: 'short' })}` }
+      { role: "system", content: SYSTEM_PROMPT }
     ];
     
     // Add conversation history if available
@@ -2229,26 +2291,14 @@ class ManusService extends EventEmitter {
 
     while (step < maxSteps && !finished) {
       step++;
-
-      // Verificar cancelamento antes de cada step
-      if (this.cancelledRuns.has(runId)) {
-        this.cancelledRuns.delete(runId);
-        await db.update(manusRuns).set({ status: "stopped", completedAt: new Date() }).where(eq(manusRuns.id, runId));
-        return;
-      }
-
+      
       try {
-        const STEP_TIMEOUT_MS = 60000; // 60s por step
-        const responsePromise = openai.chat.completions.create({
-          model: "arcadia-agent",
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
           messages,
           temperature: 0.2,
-          max_tokens: 1500,
+          max_tokens: 4000,
         });
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("Step timeout (60s)")), STEP_TIMEOUT_MS)
-        );
-        const response = await Promise.race([responsePromise, timeoutPromise]);
 
         const content = response.choices[0]?.message?.content || "";
         messages.push({ role: "assistant", content });
@@ -3826,6 +3876,253 @@ class ManusService extends EventEmitter {
       return { success: true, output };
     } catch (error: any) {
       return { success: false, output: "", error: `Erro ao gerar relatório: ${error.message}` };
+    }
+  }
+
+  // ============================================================
+  // TOOL: automation_trigger
+  // ============================================================
+  private async toolAutomationTrigger(
+    automationId: number | undefined,
+    eventType: string | undefined,
+    payload: string | undefined,
+    tenantId: number | undefined,
+    userId: string
+  ): Promise<ToolResult> {
+    try {
+      const parsedPayload = payload ? (typeof payload === 'string' ? JSON.parse(payload) : payload) : {};
+
+      if (automationId) {
+        // Direct automation execution via AutomationService
+        const { automationService } = await import("../automations/service");
+        const result = await automationService.runAutomation(automationId, userId, { ...parsedPayload, triggered_by: "manus" });
+        return {
+          success: result.success,
+          output: `Automação #${automationId} ${result.success ? 'executada com sucesso' : 'falhou'}. Log ID: ${result.logId}. ${result.result || result.error || ''}`,
+        };
+      }
+
+      if (eventType) {
+        // Emit event to automation engine via HTTP
+        const engineHost = process.env.AUTOMATION_ENGINE_HOST || "localhost";
+        const enginePort = process.env.AUTOMATION_ENGINE_PORT || "8005";
+        const response = await fetch(`http://${engineHost}:${enginePort}/xos/trigger`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ event_type: eventType, tenant_id: tenantId, payload: parsedPayload }),
+        });
+
+        if (!response.ok) throw new Error(`Engine retornou ${response.status}`);
+        const result: any = await response.json();
+        return {
+          success: true,
+          output: `Evento '${eventType}' emitido. ${result.triggered_handlers?.length || 0} handlers ativados.`,
+        };
+      }
+
+      return { success: false, output: "", error: "Informe automation_id ou event_type" };
+    } catch (error: any) {
+      return { success: false, output: "", error: `Erro ao disparar automação: ${error.message}` };
+    }
+  }
+
+  // ============================================================
+  // TOOL: xos_action
+  // ============================================================
+  private async toolXosAction(action: string, data: string | object, userId: string): Promise<ToolResult> {
+    try {
+      const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+
+      switch (action) {
+        case "create_contact": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_contacts (name, email, phone, whatsapp, type, company, position, source, tags, notes)
+            VALUES (${parsed.name}, ${parsed.email || null}, ${parsed.phone || null}, ${parsed.whatsapp || null},
+                    ${parsed.type || 'lead'}, ${parsed.company || null}, ${parsed.position || null},
+                    ${parsed.source || 'manus'}, ${parsed.tags || null}, ${parsed.notes || null})
+            RETURNING id, name, email, type
+          `);
+          const contact = (result.rows || result)[0] as any;
+          return { success: true, output: `Contato criado: ${contact.name} (ID: ${contact.id}, tipo: ${contact.type})` };
+        }
+
+        case "update_contact": {
+          const { id, ...fields } = parsed;
+          if (!id) return { success: false, output: "", error: "id obrigatório para update_contact" };
+          const sets = Object.entries(fields).map(([k, v]) => `${k} = '${v}'`).join(", ");
+          await db.execute(sql`UPDATE xos_contacts SET ${sql.raw(sets)}, updated_at = NOW() WHERE id = ${id}`);
+          return { success: true, output: `Contato #${id} atualizado com sucesso.` };
+        }
+
+        case "create_deal": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_deals (title, pipeline_id, stage_id, contact_id, company_id, value, currency, assigned_to, expected_close_date, notes)
+            VALUES (${parsed.title}, ${parsed.pipeline_id}, ${parsed.stage_id}, ${parsed.contact_id || null},
+                    ${parsed.company_id || null}, ${parsed.value || null}, ${parsed.currency || 'BRL'},
+                    ${parsed.assigned_to || null}, ${parsed.expected_close_date || null}, ${parsed.notes || null})
+            RETURNING id, title, value
+          `);
+          const deal = (result.rows || result)[0] as any;
+          return { success: true, output: `Deal criado: "${deal.title}" (ID: ${deal.id}, valor: ${deal.value})` };
+        }
+
+        case "move_deal_stage": {
+          const { deal_id, stage_id } = parsed;
+          if (!deal_id || !stage_id) return { success: false, output: "", error: "deal_id e stage_id obrigatórios" };
+          await db.execute(sql`UPDATE xos_deals SET stage_id = ${stage_id}, updated_at = NOW() WHERE id = ${deal_id}`);
+          return { success: true, output: `Deal #${deal_id} movido para estágio #${stage_id}.` };
+        }
+
+        case "create_ticket": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_tickets (title, description, contact_id, conversation_id, priority, status, category, assigned_to)
+            VALUES (${parsed.title}, ${parsed.description || null}, ${parsed.contact_id || null},
+                    ${parsed.conversation_id || null}, ${parsed.priority || 'medium'}, 'open',
+                    ${parsed.category || null}, ${parsed.assigned_to || null})
+            RETURNING id, title, priority
+          `);
+          const ticket = (result.rows || result)[0] as any;
+          return { success: true, output: `Ticket criado: "${ticket.title}" (ID: ${ticket.id}, prioridade: ${ticket.priority})` };
+        }
+
+        case "assign_agent": {
+          const { conversation_id, agent_id } = parsed;
+          if (!conversation_id) return { success: false, output: "", error: "conversation_id obrigatório" };
+          await db.execute(sql`UPDATE xos_conversations SET assigned_to = ${agent_id}, updated_at = NOW() WHERE id = ${conversation_id}`);
+          return { success: true, output: `Agente #${agent_id} atribuído à conversa #${conversation_id}.` };
+        }
+
+        case "create_task": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_activities (contact_id, deal_id, type, title, description, due_date, assigned_to, status)
+            VALUES (${parsed.contact_id || null}, ${parsed.deal_id || null}, 'task',
+                    ${parsed.title}, ${parsed.description || null},
+                    ${parsed.due_date || null}, ${parsed.assigned_to || null}, 'pending')
+            RETURNING id, title
+          `);
+          const task = (result.rows || result)[0] as any;
+          return { success: true, output: `Tarefa criada: "${task.title}" (ID: ${task.id})` };
+        }
+
+        case "create_activity": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_activities (contact_id, deal_id, type, title, description, scheduled_at, assigned_to)
+            VALUES (${parsed.contact_id || null}, ${parsed.deal_id || null}, ${parsed.type || 'note'},
+                    ${parsed.title}, ${parsed.description || null},
+                    ${parsed.scheduled_at || null}, ${parsed.assigned_to || null})
+            RETURNING id, title, type
+          `);
+          const act = (result.rows || result)[0] as any;
+          return { success: true, output: `Atividade criada: "${act.title}" (tipo: ${act.type}, ID: ${act.id})` };
+        }
+
+        case "create_note": {
+          const result = await db.execute(sql`
+            INSERT INTO xos_internal_notes (conversation_id, content, created_by, is_pinned)
+            VALUES (${parsed.conversation_id || null}, ${parsed.content}, ${userId}, ${parsed.is_pinned || false})
+            RETURNING id
+          `);
+          const note = (result.rows || result)[0] as any;
+          return { success: true, output: `Nota interna criada (ID: ${note.id})` };
+        }
+
+        default:
+          return { success: false, output: "", error: `Ação XOS desconhecida: ${action}. Use: create_contact, update_contact, create_deal, move_deal_stage, create_ticket, assign_agent, create_task, create_activity, create_note` };
+      }
+    } catch (error: any) {
+      return { success: false, output: "", error: `Erro na ação XOS '${action}': ${error.message}` };
+    }
+  }
+
+  // ============================================================
+  // TOOL: inbox_action
+  // ============================================================
+  private async toolInboxAction(
+    action: string,
+    conversationId: number | undefined,
+    data: string | object | undefined,
+    userId: string
+  ): Promise<ToolResult> {
+    try {
+      const parsed = data ? (typeof data === 'string' ? JSON.parse(data) : data) : {} as any;
+
+      switch (action) {
+        case "close_conversation": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          await db.execute(sql`
+            UPDATE xos_conversations SET status = 'closed', closed_at = NOW(), updated_at = NOW()
+            WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Conversa #${conversationId} fechada.` };
+        }
+
+        case "transfer_conversation": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          const { queue_id, agent_id } = parsed;
+          await db.execute(sql`
+            UPDATE xos_conversations SET
+              queue_id = COALESCE(${queue_id || null}, queue_id),
+              assigned_to = COALESCE(${agent_id || null}, assigned_to),
+              updated_at = NOW()
+            WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Conversa #${conversationId} transferida para fila #${queue_id || 'N/A'} / agente #${agent_id || 'N/A'}.` };
+        }
+
+        case "send_message": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          const { content, content_type } = parsed;
+          if (!content) return { success: false, output: "", error: "content obrigatório" };
+          await db.execute(sql`
+            INSERT INTO xos_messages (conversation_id, direction, sender_type, sender_name, content, content_type)
+            VALUES (${conversationId}, 'outbound', 'agent', 'Manus IA', ${content}, ${content_type || 'text'})
+          `);
+          await db.execute(sql`
+            UPDATE xos_conversations SET last_message = ${content}, updated_at = NOW() WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Mensagem enviada na conversa #${conversationId}: "${content.substring(0, 100)}"` };
+        }
+
+        case "add_label": {
+          if (!conversationId) return { success: false, output: "", error: "conversation_id obrigatório" };
+          const { label } = parsed;
+          await db.execute(sql`
+            UPDATE xos_conversations SET
+              tags = COALESCE(tags, '') || ${label ? ',' + label : ''},
+              updated_at = NOW()
+            WHERE id = ${conversationId}
+          `);
+          return { success: true, output: `Etiqueta '${label}' adicionada à conversa #${conversationId}.` };
+        }
+
+        case "resolve_ticket": {
+          const { ticket_id, resolution } = parsed;
+          if (!ticket_id) return { success: false, output: "", error: "ticket_id obrigatório" };
+          await db.execute(sql`
+            UPDATE xos_tickets SET status = 'resolved', resolution = ${resolution || null},
+              resolved_at = NOW(), updated_at = NOW()
+            WHERE id = ${ticket_id}
+          `);
+          return { success: true, output: `Ticket #${ticket_id} resolvido.` };
+        }
+
+        case "escalate_ticket": {
+          const { ticket_id, priority, reason } = parsed;
+          if (!ticket_id) return { success: false, output: "", error: "ticket_id obrigatório" };
+          await db.execute(sql`
+            UPDATE xos_tickets SET priority = ${priority || 'urgent'},
+              notes = CONCAT(COALESCE(notes, ''), ' [Escalado por Manus: ', ${reason || 'sem motivo'}, ']'),
+              updated_at = NOW()
+            WHERE id = ${ticket_id}
+          `);
+          return { success: true, output: `Ticket #${ticket_id} escalado para prioridade ${priority || 'urgent'}.` };
+        }
+
+        default:
+          return { success: false, output: "", error: `Ação de inbox desconhecida: ${action}. Use: close_conversation, transfer_conversation, send_message, add_label, resolve_ticket, escalate_ticket` };
+      }
+    } catch (error: any) {
+      return { success: false, output: "", error: `Erro na ação de inbox '${action}': ${error.message}` };
     }
   }
 }

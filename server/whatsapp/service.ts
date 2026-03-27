@@ -9,7 +9,7 @@ import { EventEmitter } from "events";
 import * as fs from "fs";
 import * as path from "path";
 import { db } from "../../db/index";
-import { whatsappContacts, whatsappMessages, whatsappTickets, graphNodes, graphEdges, chatThreads, chatParticipants, chatMessages, pcCrmLeads, tenants } from "@shared/schema";
+import { whatsappContacts, whatsappMessages, whatsappTickets, whatsappSessions, graphNodes, graphEdges, chatThreads, chatParticipants, chatMessages, pcCrmLeads, tenants } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { learningService } from "../learning/service";
 import OpenAI from "openai";
@@ -26,6 +26,8 @@ interface AutoReplyConfig {
   outsideHoursMessage: string;
   aiEnabled: boolean;
   maxAutoRepliesPerContact: number;
+  /** Optional: link to an XOS queue for schedule/out-of-hours config */
+  xosQueueId?: number;
 }
 
 interface WhatsAppSession {
@@ -57,8 +59,17 @@ class WhatsAppService extends EventEmitter {
     }
   }
 
-  setAutoReplyConfig(userId: string, config: Partial<AutoReplyConfig>): void {
-    const existing = this.autoReplyConfigs.get(userId) || {
+  async setAutoReplyConfig(userId: string, config: Partial<AutoReplyConfig>): Promise<void> {
+    const existing = this.autoReplyConfigs.get(userId) || await this.loadAutoReplyConfig(userId);
+    const merged = { ...existing, ...config };
+    this.autoReplyConfigs.set(userId, merged);
+    await db.update(whatsappSessions)
+      .set({ autoReplyConfig: merged })
+      .where(eq(whatsappSessions.userId, userId));
+  }
+
+  async loadAutoReplyConfig(userId: string): Promise<AutoReplyConfig> {
+    const defaults: AutoReplyConfig = {
       enabled: false,
       welcomeMessage: "Olá! Obrigado por entrar em contato. Em breve um atendente irá te responder.",
       businessHours: { start: 8, end: 18 },
@@ -66,7 +77,16 @@ class WhatsAppService extends EventEmitter {
       aiEnabled: true,
       maxAutoRepliesPerContact: 3,
     };
-    this.autoReplyConfigs.set(userId, { ...existing, ...config });
+    try {
+      const [session] = await db.select({ autoReplyConfig: whatsappSessions.autoReplyConfig })
+        .from(whatsappSessions)
+        .where(eq(whatsappSessions.userId, userId))
+        .limit(1);
+      if (session?.autoReplyConfig) {
+        return { ...defaults, ...(session.autoReplyConfig as Partial<AutoReplyConfig>) };
+      }
+    } catch {}
+    return defaults;
   }
 
   getAutoReplyConfig(userId: string): AutoReplyConfig {
@@ -99,7 +119,7 @@ Nome do cliente: ${contactName}`;
       messages.push({ role: "user", content: message });
 
       const response = await openai.chat.completions.create({
-        model: "arcadia-agent",
+        model: "gpt-4o-mini",
         messages,
         max_tokens: 200,
         temperature: 0.7,
@@ -112,6 +132,31 @@ Nome do cliente: ${contactName}`;
     }
   }
 
+  /** Check XOS queue schedule. Returns { isOpen, outOfHoursMessage }. */
+  private async checkXosQueueIsOpen(queueId: number): Promise<{ isOpen: boolean; outOfHoursMessage: string | null }> {
+    try {
+      const result = await db.execute(sql`
+        SELECT schedules, out_of_hours_message FROM xos_queues WHERE id = ${queueId}
+      `);
+      const queue = ((result as any).rows ?? [])[0];
+      if (!queue) return { isOpen: true, outOfHoursMessage: null };
+
+      const schedules: Array<{ dayOfWeek: number; startTime: string; endTime: string; enabled: boolean }> = queue.schedules || [];
+      if (!schedules.length) return { isOpen: true, outOfHoursMessage: null };
+
+      const now = new Date();
+      const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
+      const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const todaySchedule = schedules.find((s) => s.dayOfWeek === dayOfWeek && s.enabled !== false);
+
+      if (!todaySchedule) return { isOpen: false, outOfHoursMessage: queue.out_of_hours_message };
+      const isOpen = currentTime >= todaySchedule.startTime && currentTime < todaySchedule.endTime;
+      return { isOpen, outOfHoursMessage: isOpen ? null : queue.out_of_hours_message };
+    } catch {
+      return { isOpen: true, outOfHoursMessage: null }; // fail-open: don't block messages if DB query fails
+    }
+  }
+
   private async processAutoReply(msg: IncomingMessage, contact: typeof whatsappContacts.$inferSelect): Promise<void> {
     try {
       const config = this.getAutoReplyConfig(msg.userId);
@@ -119,18 +164,29 @@ Nome do cliente: ${contactName}`;
 
       const contactKey = `${msg.userId}_${contact.id}`;
       const currentCount = this.autoReplyCount.get(contactKey) || 0;
-      
+
       if (currentCount >= config.maxAutoRepliesPerContact) {
         return;
       }
 
-      const currentHour = new Date().getHours();
-      const isBusinessHours = currentHour >= config.businessHours.start && currentHour < config.businessHours.end;
+      // Check business hours — prefer XOS queue schedule when configured
+      let isBusinessHours: boolean;
+      let outsideHoursReply: string;
+
+      if (config.xosQueueId) {
+        const { isOpen, outOfHoursMessage } = await this.checkXosQueueIsOpen(config.xosQueueId);
+        isBusinessHours = isOpen;
+        outsideHoursReply = outOfHoursMessage || config.outsideHoursMessage;
+      } else {
+        const currentHour = new Date().getHours();
+        isBusinessHours = currentHour >= config.businessHours.start && currentHour < config.businessHours.end;
+        outsideHoursReply = config.outsideHoursMessage;
+      }
 
       let replyText: string;
 
       if (!isBusinessHours) {
-        replyText = config.outsideHoursMessage;
+        replyText = outsideHoursReply;
       } else if (currentCount === 0) {
         replyText = config.welcomeMessage;
       } else if (config.aiEnabled) {

@@ -33,44 +33,18 @@ Você tem acesso ao contexto do projeto e pode ler arquivos existentes.
 - Banco: PostgreSQL
 - Autenticação: Passport.js
 
-## SISTEMA MODULAR (IMPORTANTE!)
-O projeto usa um sistema modular para autonomia do Dev Center:
-
-### Schemas (Banco de Dados)
-- Criar schemas novos em: shared/schemas/{nomeModulo}.ts
-- NÃO modificar shared/schema.ts (protegido)
-- NÃO importar de @shared/schema (evitar referência circular)
-- Usar varchar("user_id") SEM .references() para referências a tabelas do schema principal
-- Importar diretamente: import { sql } from "drizzle-orm"; import { pgTable, ... } from "drizzle-orm/pg-core";
-- Exportar: tabelas, insertSchemas (drizzle-zod), e types
-- Prefixar tabelas com nome do módulo: bsc_objectives, fin_transactions, etc.
-
-### Rotas (API)
-- Criar rotas em: server/modules/{nomeModulo}.ts
-- NÃO modificar server/routes.ts (protegido)
-- Exportar default um Router do Express
-- As rotas ficam automaticamente em /api/modules/{nomeModulo}
-- Importar schemas do módulo: import { ... } from "@shared/schemas/{nomeModulo}"
-- Importar db: import { db } from "../../db"
-
-### Páginas (Frontend)
-- Criar em: client/src/pages/{NomeModulo}.tsx
-- Componentes em: client/src/components/{nomeModulo}/
-
 ## Formato de Saída (JSON)
 {
   "moduleName": "nome-do-modulo",
   "description": "descrição completa",
   "schema": {
-    "file": "shared/schemas/{moduleName}.ts",
     "tables": [{ "name": "tabela", "columns": [{ "name": "coluna", "type": "tipo", "constraints": [] }] }]
   },
   "api": {
-    "file": "server/modules/{moduleName}.ts",
-    "routes": [{ "method": "GET|POST|PUT|DELETE", "path": "/{rota}", "description": "descrição" }]
+    "routes": [{ "method": "GET|POST|PUT|DELETE", "path": "/api/rota", "description": "descrição", "requestBody": {}, "response": {} }]
   },
   "ui": {
-    "components": [{ "name": "Componente", "type": "page|modal|widget", "description": "desc", "path": "client/src/pages/{Nome}.tsx" }]
+    "components": [{ "name": "Componente", "type": "page|modal|widget", "description": "desc", "path": "caminho/arquivo.tsx" }]
   },
   "integrations": ["módulos existentes que devem ser integrados"],
   "existingFiles": ["arquivos que precisam ser modificados"]

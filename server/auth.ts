@@ -30,8 +30,12 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+if (!process.env.SESSION_SECRET) {
+  console.warn("[auth] WARNING: SESSION_SECRET env var not set. Using insecure fallback. Set SESSION_SECRET in production.");
+}
+
 const sessionSettings: session.SessionOptions = {
-  secret: process.env.SESSION_SECRET || "arcadia-browser-secret-key-2024",
+  secret: process.env.SESSION_SECRET || `arcadia-dev-${Math.random().toString(36)}`,
   resave: false,
   saveUninitialized: false,
   store: storage.sessionStore,

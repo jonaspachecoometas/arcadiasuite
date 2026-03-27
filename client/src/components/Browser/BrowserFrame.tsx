@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import React, { useEffect } from "react";
-import { Bot, Settings, MessageCircle, Zap, LayoutDashboard, Compass, Users, Ticket, LogOut, User, Shield, Receipt, Package, Rocket, Beaker, TrendingUp, MapPin, Droplets, Star, Database, Layout, Code, Code2, Store, Layers, Building2 } from "lucide-react";
-const browserIcon = "/arcadia_suite_icon.png";
+import { Bot, Settings, MessageCircle, Zap, LayoutDashboard, Compass, Users, Ticket, LogOut, User, Shield, Receipt, Package, Rocket, Beaker, TrendingUp, MapPin, Droplets, Star, Database, Layout, Code, Code2, Store, Layers } from "lucide-react";
+import browserIcon from "@assets/arcadia_branding/arcadia_suite_icon.png";
 import { useAuth } from "@/hooks/use-auth";
 import { useNavigationTracking } from "@/hooks/use-navigation-tracking";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ function CompactNavigationBar() {
   return (
     <div className="h-10 bg-background border-b border-border flex items-center px-3 gap-2 text-xs text-muted-foreground shadow-xs z-10">
       <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide flex-1">
-        {(user?.role === "admin" || user?.role === "master") && (
+        {user?.role === "admin" && (
           <div 
             className="flex items-center gap-1 hover:bg-muted px-2 py-1.5 rounded cursor-pointer transition-colors flex-shrink-0"
             onClick={() => navigateTo("/admin", "Administração")}
@@ -123,13 +123,13 @@ function CompactNavigationBar() {
         </div>
         <div 
           className="flex items-center gap-1 hover:bg-muted px-2 py-1.5 rounded cursor-pointer transition-colors flex-shrink-0"
-          onClick={() => navigateTo("/soe", "SOE")}
-          data-testid="bookmark-soe"
+          onClick={() => navigateTo("/erp", "ERP")}
+          data-testid="bookmark-erp"
         >
           <div className="w-4 h-4 bg-gradient-to-br from-blue-600 to-blue-800 rounded-sm flex items-center justify-center">
-            <Building2 className="w-2.5 h-2.5 text-white" />
+            <Package className="w-2.5 h-2.5 text-white" />
           </div>
-          <span className="hidden md:inline">SOE</span>
+          <span className="hidden md:inline">ERP</span>
         </div>
         <div 
           className="flex items-center gap-1 hover:bg-muted px-2 py-1.5 rounded cursor-pointer transition-colors flex-shrink-0"
@@ -141,7 +141,16 @@ function CompactNavigationBar() {
           </div>
           <span className="hidden md:inline">Retail</span>
         </div>
-        {/* Plus hidden temporarily */}
+        <div 
+          className="flex items-center gap-1 hover:bg-muted px-2 py-1.5 rounded cursor-pointer transition-colors flex-shrink-0"
+          onClick={() => navigateTo("/plus", "Plus")}
+          data-testid="bookmark-plus"
+        >
+          <div className="w-4 h-4 bg-gradient-to-br from-purple-500 to-purple-700 rounded-sm flex items-center justify-center">
+            <Layers className="w-2.5 h-2.5 text-white" />
+          </div>
+          <span className="hidden md:inline">Plus</span>
+        </div>
         <div 
           className="flex items-center gap-1 hover:bg-muted px-2 py-1.5 rounded cursor-pointer transition-colors flex-shrink-0"
           onClick={() => navigateTo("/fisco", "Fisco")}
@@ -179,10 +188,10 @@ function CompactNavigationBar() {
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">{user?.name || user?.username}</p>
                 <p className="text-xs leading-none text-muted-foreground">@{user?.username}</p>
-                {(user?.role === "admin" || user?.role === "master") && (
+                {user?.role === "admin" && (
                   <p className="text-xs leading-none text-primary flex items-center gap-1 mt-1">
                     <Shield className="w-3 h-3" />
-                    {user?.role === "master" ? "Administrador Master" : "Administrador"}
+                    Administrador
                   </p>
                 )}
               </div>
@@ -192,7 +201,7 @@ function CompactNavigationBar() {
               <User className="mr-2 h-4 w-4" />
               <span>Meu Perfil</span>
             </DropdownMenuItem>
-            {(user?.role === "admin" || user?.role === "master") && (
+            {user?.role === "admin" && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs text-muted-foreground">Plataforma</DropdownMenuLabel>

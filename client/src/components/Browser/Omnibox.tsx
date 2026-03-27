@@ -80,10 +80,10 @@ export function Omnibox({ url, onNavigate, isLoading }: OmniboxProps) {
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium leading-none">{user?.name || user?.username}</p>
                 <p className="text-xs leading-none text-muted-foreground">@{user?.username}</p>
-                {(user?.role === "admin" || user?.role === "master") && (
+                {user?.role === "admin" && (
                   <p className="text-xs leading-none text-primary flex items-center gap-1 mt-1">
                     <Shield className="w-3 h-3" />
-                    {user?.role === "master" ? "Administrador Master" : "Administrador"}
+                    Administrador
                   </p>
                 )}
               </div>

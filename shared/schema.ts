@@ -7431,98 +7431,86 @@ export type SoeLancamento = typeof soeLancamentos.$inferSelect;
 export type InsertSoeLancamento = z.infer<typeof insertSoeLancamentoSchema>;
 
 // =============================================================================
-// ARCÁDIA AGENTIC SUITE — Skills POO (Fase 1 — 2026-03-24)
-// Modelo orientado a objetos: herança, composição, polimorfismo, multi-tenant
-// NÃO remove xosSkillRegistry (modelo legado XOS continua intacto)
+// AGENTIC SUITE — Skills (POO)
 // =============================================================================
 
-export const arcadiaSkills = pgTable("arcadia_skills", {
+export const skills = pgTable("skills", {
   id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  companyId: integer("company_id"),
+  userId: varchar("user_id").references(() => users.id),
 
   // Identidade
   name: varchar("name", { length: 255 }).notNull(),
   slug: varchar("slug", { length: 255 }).notNull(),
+  namespace: varchar("namespace", { length: 20 }).notNull().default("tenant"), // system | tenant | company | user
   description: text("description"),
-  version: varchar("version", { length: 50 }).notNull().default("1.0.0"),
-  icon: varchar("icon", { length: 100 }),
-  tags: text("tags").array(),
+  version: varchar("version", { length: 20 }).notNull().default("1.0.0"),
+  tags: text("tags").array().default([]),
 
-  // Namespace multi-tenant (system > tenant > company > user)
-  namespace: varchar("namespace", { length: 20 }).notNull().default("tenant"), // 'system' | 'tenant' | 'company' | 'user'
-  tenantId: integer("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
-  companyId: integer("company_id"),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  // Herança e composição (referências /skill/...)
+  extends: text("extends").array().default([]),    // skills herdadas
+  implements: text("implements").array().default([]), // interfaces/contratos
+  dependencies: jsonb("dependencies").default([]),  // referências / resolvidas
 
-  // Herança POO — lista de slugs: ['/skill:system/base_report']
-  extends: text("extends").array(),
-  // Interfaces/contratos implementados
-  implements: text("implements").array(),
+  // Visibilidade
+  executeVisibility: varchar("execute_visibility", { length: 20 }).default("public"),
+  parametersVisibility: varchar("parameters_visibility", { length: 20 }).default("public"),
 
-  // Encapsulamento
-  visibilityExecute: varchar("visibility_execute", { length: 20 }).default("public"), // 'public' | 'private' | 'protected'
-  visibilityParams: varchar("visibility_params", { length: 20 }).default("public"),
-
-  // Composição — dependências como referências /tipo/caminho
-  dependencies: text("dependencies").array(),
-
-  // Trigger (quando executar automaticamente)
-  triggerType: varchar("trigger_type", { length: 30 }), // 'schedule' | 'event' | 'manual' | 'webhook'
+  // Trigger
+  triggerType: varchar("trigger_type", { length: 30 }), // schedule | event | webhook | manual
   triggerConfig: jsonb("trigger_config"),
 
-  // Corpo da skill (Markdown com blocos /skill/, /kg/, /tool/, etc.)
+  // Schemas de entrada/saída
+  parametersSchema: jsonb("parameters_schema").default({}),
+  returnSchema: jsonb("return_schema").default({}),
+
+  // Corpo da skill (Markdown/YAML com frontmatter)
   body: text("body"),
 
-  // Schemas de entrada/saída
-  parametersSchema: jsonb("parameters_schema"),
-  returnSchema: jsonb("return_schema"),
-
   // Estado
-  status: varchar("status", { length: 20 }).notNull().default("draft"), // 'draft' | 'active' | 'archived'
+  status: varchar("status", { length: 20 }).notNull().default("active"), // draft | active | archived
   isSystem: boolean("is_system").default(false),
 
-  // Autoria e rastreamento
-  author: varchar("author", { length: 255 }),
-  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  // Auditoria
+  createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
 });
 
 export const skillExecutions = pgTable("skill_executions", {
   id: uuid("id").primaryKey().defaultRandom(),
-  skillId: uuid("skill_id").notNull().references(() => arcadiaSkills.id, { onDelete: "cascade" }),
+  skillId: uuid("skill_id").notNull().references(() => skills.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").references(() => tenants.id),
 
   // Contexto de execução
-  tenantId: integer("tenant_id").references(() => tenants.id),
-  companyId: integer("company_id"),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  triggeredBy: varchar("triggered_by", { length: 30 }).notNull().default("manual"), // manual | schedule | event | agent
+  triggeredByUserId: varchar("triggered_by_user_id").references(() => users.id),
+  triggeredByAgentId: varchar("triggered_by_agent_id", { length: 100 }),
 
-  // Origem da execução
-  triggeredBy: varchar("triggered_by", { length: 30 }), // 'manual' | 'schedule' | 'automation' | 'agent' | 'openclaw'
-  automationId: integer("automation_id"),
-  parentExecutionId: uuid("parent_execution_id"), // para skills compostas
+  // Parâmetros e resultado
+  parameters: jsonb("parameters").default({}),
+  result: jsonb("result"),
+  error: text("error"),
 
-  // Dados
-  inputParams: jsonb("input_params"),
-  outputResult: jsonb("output_result"),
-  resolvedDependencies: jsonb("resolved_dependencies"), // cache das refs / resolvidas
-
-  // Estado
-  status: varchar("status", { length: 20 }).notNull().default("pending"), // 'pending' | 'running' | 'success' | 'error' | 'cancelled'
-  errorMessage: text("error_message"),
+  // Estado e métricas
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | running | success | failed
   durationMs: integer("duration_ms"),
+  stepsCount: integer("steps_count").default(0),
 
-  // Imutabilidade / auditoria
-  auditHash: varchar("audit_hash", { length: 64 }),
+  // Rastreabilidade
+  correlationId: uuid("correlation_id").defaultRandom(),
+  auditHash: varchar("audit_hash", { length: 64 }), // SHA-256 do resultado para imutabilidade
 
   startedAt: timestamp("started_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   completedAt: timestamp("completed_at"),
 });
 
-export const insertArcadiaSkillSchema = createInsertSchema(arcadiaSkills).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSkillSchema = createInsertSchema(skills).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSkillExecutionSchema = createInsertSchema(skillExecutions).omit({ id: true, startedAt: true });
 
-export type ArcadiaSkill = typeof arcadiaSkills.$inferSelect;
-export type InsertArcadiaSkill = z.infer<typeof insertArcadiaSkillSchema>;
+export type Skill = typeof skills.$inferSelect;
+export type InsertSkill = z.infer<typeof insertSkillSchema>;
 export type SkillExecution = typeof skillExecutions.$inferSelect;
 export type InsertSkillExecution = z.infer<typeof insertSkillExecutionSchema>;
 
@@ -7568,7 +7556,7 @@ export const skillSuggestions = pgTable("skill_suggestions", {
   confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull().default("0"),
 
   // Skill gerada (após confirmação)
-  generatedSkillId: uuid("generated_skill_id").references(() => arcadiaSkills.id),
+  generatedSkillId: uuid("generated_skill_id").references(() => skills.id),
 
   // Estado da sugestão
   status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | accepted | rejected | expired

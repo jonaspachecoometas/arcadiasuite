@@ -36,6 +36,7 @@ export class FrappeService {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
+      signal: AbortSignal.timeout(30000),
     };
 
     if (data && (method === "POST" || method === "PUT")) {
