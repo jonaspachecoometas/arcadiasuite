@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, primaryKey, serial, integer, timestamp, numeric, jsonb, boolean, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, primaryKey, serial, integer, timestamp, numeric, jsonb, boolean, date, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7429,3 +7429,151 @@ export type SoeEvento = typeof soeEventos.$inferSelect;
 export type InsertSoeEvento = z.infer<typeof insertSoeEventoSchema>;
 export type SoeLancamento = typeof soeLancamentos.$inferSelect;
 export type InsertSoeLancamento = z.infer<typeof insertSoeLancamentoSchema>;
+
+// =============================================================================
+// AGENTIC SUITE — Skills (POO)
+// =============================================================================
+
+export const skills = pgTable("skills", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  companyId: integer("company_id"),
+  userId: varchar("user_id").references(() => users.id),
+
+  // Identidade
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull(),
+  namespace: varchar("namespace", { length: 20 }).notNull().default("tenant"), // system | tenant | company | user
+  description: text("description"),
+  version: varchar("version", { length: 20 }).notNull().default("1.0.0"),
+  tags: text("tags").array().default([]),
+
+  // Herança e composição (referências /skill/...)
+  extends: text("extends").array().default([]),    // skills herdadas
+  implements: text("implements").array().default([]), // interfaces/contratos
+  dependencies: jsonb("dependencies").default([]),  // referências / resolvidas
+
+  // Visibilidade
+  executeVisibility: varchar("execute_visibility", { length: 20 }).default("public"),
+  parametersVisibility: varchar("parameters_visibility", { length: 20 }).default("public"),
+
+  // Trigger
+  triggerType: varchar("trigger_type", { length: 30 }), // schedule | event | webhook | manual
+  triggerConfig: jsonb("trigger_config"),
+
+  // Schemas de entrada/saída
+  parametersSchema: jsonb("parameters_schema").default({}),
+  returnSchema: jsonb("return_schema").default({}),
+
+  // Corpo da skill (Markdown/YAML com frontmatter)
+  body: text("body"),
+
+  // Estado
+  status: varchar("status", { length: 20 }).notNull().default("active"), // draft | active | archived
+  isSystem: boolean("is_system").default(false),
+
+  // Auditoria
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const skillExecutions = pgTable("skill_executions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  skillId: uuid("skill_id").notNull().references(() => skills.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+
+  // Contexto de execução
+  triggeredBy: varchar("triggered_by", { length: 30 }).notNull().default("manual"), // manual | schedule | event | agent
+  triggeredByUserId: varchar("triggered_by_user_id").references(() => users.id),
+  triggeredByAgentId: varchar("triggered_by_agent_id", { length: 100 }),
+
+  // Parâmetros e resultado
+  parameters: jsonb("parameters").default({}),
+  result: jsonb("result"),
+  error: text("error"),
+
+  // Estado e métricas
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | running | success | failed
+  durationMs: integer("duration_ms"),
+  stepsCount: integer("steps_count").default(0),
+
+  // Rastreabilidade
+  correlationId: uuid("correlation_id").defaultRandom(),
+  auditHash: varchar("audit_hash", { length: 64 }), // SHA-256 do resultado para imutabilidade
+
+  startedAt: timestamp("started_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertSkillSchema = createInsertSchema(skills).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSkillExecutionSchema = createInsertSchema(skillExecutions).omit({ id: true, startedAt: true });
+
+export type Skill = typeof skills.$inferSelect;
+export type InsertSkill = z.infer<typeof insertSkillSchema>;
+export type SkillExecution = typeof skillExecutions.$inferSelect;
+export type InsertSkillExecution = z.infer<typeof insertSkillExecutionSchema>;
+
+// ============================================================
+// OpenClaw — Fase 4: Detecção de Padrões e Emergência de Skills
+// ============================================================
+
+export const detectedPatterns = pgTable("detected_patterns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  userId: varchar("user_id").references(() => users.id),
+
+  // Padrão detectado
+  actionType: varchar("action_type", { length: 100 }).notNull(),
+  description: text("description"),
+  frequency: integer("frequency").notNull().default(0),
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull().default("0"),
+
+  // Janela de análise
+  firstSeenAt: timestamp("first_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+
+  // Metadados do padrão (contexto, módulos envolvidos, etc.)
+  metadata: jsonb("metadata").default({}),
+
+  // Estado do ciclo de vida
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active | archived | converted
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const skillSuggestions = pgTable("skill_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  patternId: uuid("pattern_id").references(() => detectedPatterns.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  userId: varchar("user_id").references(() => users.id),
+
+  // Skill sugerida
+  suggestedSkillName: varchar("suggested_skill_name", { length: 200 }).notNull(),
+  suggestedDescription: text("suggested_description"),
+  estimatedAutomation: text("estimated_automation"),
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull().default("0"),
+
+  // Skill gerada (após confirmação)
+  generatedSkillId: uuid("generated_skill_id").references(() => skills.id),
+
+  // Estado da sugestão
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | accepted | rejected | expired
+
+  // Rastreabilidade
+  source: varchar("source", { length: 50 }).notNull().default("openclaw"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertDetectedPatternSchema = createInsertSchema(detectedPatterns).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSkillSuggestionSchema = createInsertSchema(skillSuggestions).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type DetectedPattern = typeof detectedPatterns.$inferSelect;
+export type InsertDetectedPattern = z.infer<typeof insertDetectedPatternSchema>;
+export type SkillSuggestionRecord = typeof skillSuggestions.$inferSelect;
+export type InsertSkillSuggestion = z.infer<typeof insertSkillSuggestionSchema>;

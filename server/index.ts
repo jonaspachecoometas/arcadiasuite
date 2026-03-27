@@ -346,7 +346,7 @@ export function log(message: string, source = "express") {
         password: hashedPassword,
         name: "Administrador Master",
         email: "admin@arcadia.suite",
-        role: "master",
+        role: "admin",
         status: "active",
       });
       console.log("[Seed] Usuário master 'admin' criado com sucesso");

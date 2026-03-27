@@ -9,6 +9,7 @@ import { SoeMotorProvider } from "@/contexts/SoeMotorContext";
 import { ProtectedRoute } from "@/lib/protected-route";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KnowledgeCollectorInit } from "@/components/KnowledgeCollectorInit";
+import { OpenClawWidget } from "@/components/openclaw/OpenClawWidget";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 
@@ -164,6 +165,7 @@ function App() {
             <KnowledgeCollectorInit />
             <Toaster />
             <CommandPalette />
+            <OpenClawWidget />
             <Router />
           </TooltipProvider>
         </SoeMotorProvider>

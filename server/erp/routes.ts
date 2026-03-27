@@ -1190,3 +1190,6 @@ export function registerErpRoutes(app: Express): void {
     }
   });
 }
+// SOE routes — placeholder
+
+export function registerSoeRoutes(_app: Express): void {}

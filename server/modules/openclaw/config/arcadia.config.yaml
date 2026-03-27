@@ -1,0 +1,264 @@
+# OpenClaw Configuration for Arcádia Suite
+# Detecção proativa de padrões e sugestão de skills emergentes
+
+openclaw:
+  enabled: true
+  version: "1.0.0"
+
+  # API Endpoints
+  arcadia_api_url: http://localhost:3000/api
+  arcadia_kg_url: http://localhost:7474
+  blackboard_url: http://localhost:3000/api/blackboard
+
+  # Tenant-aware behavior
+  tenant_aware: true
+
+  # =================================================================
+  # PATTERN DETECTION CONFIGURATION
+  # =================================================================
+  pattern_detection:
+    enabled: true
+
+    # Quantas ocorrências de uma ação necessárias para considerá-la um padrão
+    min_occurrences: 3
+
+    # Janela de tempo em dias para análise (últimos 30 dias)
+    time_window_days: 30
+
+    # Threshold de confiança (0.0 a 1.0)
+    # 0.8 = 80% de confiança mínima
+    confidence_threshold: 0.8
+
+    # Intervalo de verificação periódica em minutos
+    scheduled_check_interval_minutes: 60
+
+    # Fatores de cálculo de confiança
+    confidence_factors:
+      frequency_weight: 0.4      # Peso da frequência (quantas vezes)
+      regularity_weight: 0.35    # Peso da regularidade (consistência)
+      recency_weight: 0.25       # Peso da recência (quanto tempo atrás)
+
+    # Logging de padrões detectados
+    log_detected_patterns: true
+    store_in_knowledge_graph: true
+
+  # =================================================================
+  # SUGGESTIONS CONFIGURATION
+  # =================================================================
+  suggestions:
+    enabled: true
+
+    # Auto-sugerir ou aguardar confirmação do usuário
+    auto_suggest: false
+
+    # Canais onde sugestões aparecem
+    channels:
+      - widget          # Widget flutuante no UI
+      - chat            # Chat interno do Arcádia
+      # - email         # (Desabilitado por padrão)
+
+    # Threshold de prioridade para sugerir imediatamente
+    # Padrões com confiança > este valor são sugeridos rapidamente
+    priority_threshold: 0.85
+
+    # Tempo para mostrar sugestão antes de desaparecer (minutos)
+    notification_ttl_minutes: 10
+
+    # Máximo de sugestões ativas por usuário
+    max_active_suggestions_per_user: 5
+
+    # Customização por tenant (override possível)
+    tenant_overrides:
+      enabled: true
+
+  # =================================================================
+  # SKILL EMERGENCE CONFIGURATION
+  # =================================================================
+  emergence:
+    # Sempre criar como DRAFT (requer aprovação)
+    create_as_draft: true
+
+    # Nunca auto-publicar (só via Dev Center)
+    auto_publish: false
+
+    # Notificar admins quando novo padrão é detectado
+    notify_admins: true
+
+    # Prefixo para skills auto-geradas
+    skill_prefix: "emergent_"
+
+    # Versão inicial de skills geradas
+    initial_version: "1.0.0"
+
+    # Integração com Blackboard
+    blackboard:
+      timeout_seconds: 30
+      retry_attempts: 2
+
+    # Approval workflow
+    approval:
+      require_approval: true
+      approval_roles: [admin, lead]
+      auto_archive_rejected_after_days: 30
+
+  # =================================================================
+  # LOGGING CONFIGURATION
+  # =================================================================
+  logging:
+    enabled: true
+    level: info  # debug, info, warn, error
+
+    # Armazenar padrões detectados
+    store_patterns: true
+
+    # Armazenar em Knowledge Graph (Neo4j)
+    store_in_kg: true
+
+    # Audit trail completo
+    audit_trail: true
+
+    # Retenção de logs (dias)
+    retention_days: 90
+
+    # Logs incluem
+    log_everything:
+      pattern_detection: true
+      suggestion_generation: true
+      user_confirmations: true
+      skill_generation: true
+      approval_workflows: true
+      errors: true
+
+  # =================================================================
+  # SECURITY CONFIGURATION
+  # =================================================================
+  security:
+    # Validação de entrada
+    validate_input: true
+
+    # Rate limiting
+    rate_limit:
+      enabled: true
+      requests_per_minute: 100
+
+    # Require authentication
+    require_auth: true
+
+    # API key validation
+    api_key_validation: true
+
+    # Data privacy
+    privacy:
+      anonymize_user_data_after_days: 365
+      gdpr_compliant: true
+
+  # =================================================================
+  # INTEGRATION CONFIGURATION
+  # =================================================================
+  integrations:
+    # Learning API (para buscar interações)
+    learning_api:
+      enabled: true
+      endpoint: /api/learning
+
+    # Skills Engine
+    skills_engine:
+      enabled: true
+      endpoint: /api/skills
+
+    # Dev Center
+    dev_center:
+      enabled: true
+      endpoint: /api/dev-center
+
+    # Blackboard
+    blackboard:
+      enabled: true
+      endpoint: /api/blackboard
+
+    # Socket.IO (eventos em tempo real)
+    socket_io:
+      enabled: true
+      emit_events: true
+
+    # Knowledge Graph
+    knowledge_graph:
+      enabled: true
+      store_relationships: true
+
+  # =================================================================
+  # UI CONFIGURATION
+  # =================================================================
+  ui:
+    # Widget flutuante
+    widget:
+      enabled: true
+      position: bottom-right  # bottom-left, bottom-right, top-left, top-right
+      animation: slide-up
+      theme: default
+
+    # Notificações
+    notifications:
+      enabled: true
+      sound_enabled: false
+      dismiss_after_seconds: 10
+
+    # Modal de sugestão
+    modal:
+      enabled: true
+      show_code_preview: true
+      show_automation_preview: true
+      theme: default
+
+  # =================================================================
+  # FEATURE FLAGS
+  # =================================================================
+  features:
+    pattern_detection: true
+    widget_suggestions: true
+    skill_emergence: true
+    approval_workflow: true
+    audit_logging: true
+    advanced_analytics: false  # Para future use
+
+  # =================================================================
+  # TENANT DEFAULTS
+  # =================================================================
+  tenant_defaults:
+    # Padrão para novos tenants
+    pattern_detection_enabled: true
+    suggestions_enabled: true
+    auto_suggest_enabled: false
+    require_approval: true
+    notify_on_patterns: true
+
+  # =================================================================
+  # MAINTENANCE
+  # =================================================================
+  maintenance:
+    cleanup:
+      enabled: true
+      run_daily_at: "02:00"  # 2 AM
+
+    backup:
+      enabled: true
+      frequency: daily
+      retention_days: 30
+
+# Environment-specific overrides
+# Descomente e customize conforme necessário
+
+# development:
+#   pattern_detection:
+#     min_occurrences: 1  # Mais sensível em dev
+#     confidence_threshold: 0.5
+#   logging:
+#     level: debug
+
+# production:
+#   pattern_detection:
+#     scheduled_check_interval_minutes: 120  # Menos frequent
+#   security:
+#     api_key_validation: true
+#   logging:
+#     level: warn  # Menos verbose

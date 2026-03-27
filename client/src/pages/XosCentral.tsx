@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
 import {
@@ -14,6 +14,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface XosStats {
   total_contacts: number;
@@ -67,6 +70,48 @@ interface Activity {
 
 export default function XosCentral() {
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [isNewContactOpen, setIsNewContactOpen] = useState(false);
+  const [isNewActivityOpen, setIsNewActivityOpen] = useState(false);
+  const [newContact, setNewContact] = useState({ name: "", email: "", phone: "", company: "", position: "" });
+  const [newActivity, setNewActivity] = useState({ type: "task", title: "", due_at: "", priority: "medium" });
+
+  const queryClient = useQueryClient();
+
+  const createContactMutation = useMutation({
+    mutationFn: async (data: typeof newContact) => {
+      const res = await fetch("/api/xos/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Erro ao criar contato");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/xos/contacts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/xos/stats"] });
+      setIsNewContactOpen(false);
+      setNewContact({ name: "", email: "", phone: "", company: "", position: "" });
+    },
+  });
+
+  const createActivityMutation = useMutation({
+    mutationFn: async (data: typeof newActivity) => {
+      const res = await fetch("/api/xos/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Erro ao criar atividade");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/xos/activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/xos/stats"] });
+      setIsNewActivityOpen(false);
+      setNewActivity({ type: "task", title: "", due_at: "", priority: "medium" });
+    },
+  });
 
   const { data: stats } = useQuery<XosStats>({
     queryKey: ["/api/xos/stats"],
@@ -181,9 +226,9 @@ export default function XosCentral() {
                   </span>
                 )}
               </Button>
-              <Button data-testid="button-new-contact">
+              <Button data-testid="button-new-contact" onClick={() => setIsNewContactOpen(true)}>
                 <PlusCircle className="h-4 w-4 mr-2" />
-                Novo
+                Novo Contato
               </Button>
             </div>
           </div>
@@ -410,7 +455,7 @@ export default function XosCentral() {
                       <Filter className="h-4 w-4 mr-2" />
                       Filtros
                     </Button>
-                    <Button size="sm">
+                    <Button size="sm" onClick={() => setIsNewContactOpen(true)}>
                       <PlusCircle className="h-4 w-4 mr-2" />
                       Novo Contato
                     </Button>
@@ -482,7 +527,7 @@ export default function XosCentral() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>Atividades</CardTitle>
-                  <Button size="sm">
+                  <Button size="sm" onClick={() => setIsNewActivityOpen(true)}>
                     <PlusCircle className="h-4 w-4 mr-2" />
                     Nova Atividade
                   </Button>
@@ -524,6 +569,129 @@ export default function XosCentral() {
         </Tabs>
       </main>
     </div>
+      {/* Modal: Novo Contato */}
+      <Dialog open={isNewContactOpen} onOpenChange={setIsNewContactOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Novo Contato</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Nome *</Label>
+              <Input
+                value={newContact.name}
+                onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
+                placeholder="Nome do contato"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                type="email"
+                value={newContact.email}
+                onChange={(e) => setNewContact({ ...newContact, email: e.target.value })}
+                placeholder="email@exemplo.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Telefone</Label>
+              <Input
+                value={newContact.phone}
+                onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Empresa</Label>
+                <Input
+                  value={newContact.company}
+                  onChange={(e) => setNewContact({ ...newContact, company: e.target.value })}
+                  placeholder="Empresa"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Cargo</Label>
+                <Input
+                  value={newContact.position}
+                  onChange={(e) => setNewContact({ ...newContact, position: e.target.value })}
+                  placeholder="Cargo"
+                />
+              </div>
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => createContactMutation.mutate(newContact)}
+              disabled={!newContact.name || createContactMutation.isPending}
+            >
+              {createContactMutation.isPending ? "Salvando..." : "Criar Contato"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Nova Atividade */}
+      <Dialog open={isNewActivityOpen} onOpenChange={setIsNewActivityOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Atividade</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Título *</Label>
+              <Input
+                value={newActivity.title}
+                onChange={(e) => setNewActivity({ ...newActivity, title: e.target.value })}
+                placeholder="Descrição da atividade"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select value={newActivity.type} onValueChange={(v) => setNewActivity({ ...newActivity, type: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="task">Tarefa</SelectItem>
+                    <SelectItem value="call">Ligação</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
+                    <SelectItem value="meeting">Reunião</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Prioridade</Label>
+                <Select value={newActivity.priority} onValueChange={(v) => setNewActivity({ ...newActivity, priority: v })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Baixa</SelectItem>
+                    <SelectItem value="medium">Média</SelectItem>
+                    <SelectItem value="high">Alta</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Data prevista</Label>
+              <Input
+                type="datetime-local"
+                value={newActivity.due_at}
+                onChange={(e) => setNewActivity({ ...newActivity, due_at: e.target.value })}
+              />
+            </div>
+            <Button
+              className="w-full"
+              onClick={() => createActivityMutation.mutate(newActivity)}
+              disabled={!newActivity.title || createActivityMutation.isPending}
+            >
+              {createActivityMutation.isPending ? "Salvando..." : "Criar Atividade"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </BrowserFrame>
   );
 }

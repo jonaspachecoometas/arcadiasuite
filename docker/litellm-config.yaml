@@ -13,38 +13,31 @@
 model_list:
 
   # ── TIER 1: LLMFit (modelos fine-tuned locais — máxima soberania) ────────────
-  # Descomente quando o LLMFit estiver rodando no servidor
-  # O LLMFit expõe API compatível com OpenAI — basta apontar a URL
-  #
-  # - model_name: arcadia-finetuned
-  #   litellm_params:
-  #     model: openai/arcadia-v1          # nome do modelo no LLMFit
-  #     api_base: os.environ/LLMFIT_BASE_URL
-  #     api_key: llmfit-internal
-  #
-  # - model_name: arcadia-embed
-  #   litellm_params:
-  #     model: openai/arcadia-embed-v1    # modelo de embeddings fine-tuned
-  #     api_base: os.environ/LLMFIT_BASE_URL
-  #     api_key: llmfit-internal
+  - model_name: arcadia-finetuned
+    litellm_params:
+      model: openai/llama3.2:3b
+      api_base: os.environ/LLMFIT_BASE_URL
+      api_key: os.environ/LLMFIT_API_KEY
+
+  - model_name: arcadia-embed
+    litellm_params:
+      model: openai/nomic-embed-text:latest
+      api_base: os.environ/LLMFIT_BASE_URL
+      api_key: os.environ/LLMFIT_API_KEY
 
   # ── TIER 2: Ollama (LLMs locais — soberania total) ───────────────────────────
-  - model_name: llama3.3
+  - model_name: llama3.2
     litellm_params:
-      model: ollama/llama3.3
-      api_base: os.environ/OLLAMA_BASE_URL
-
-  - model_name: qwen2.5-coder
-    litellm_params:
-      model: ollama/qwen2.5-coder:7b
-      api_base: os.environ/OLLAMA_BASE_URL
-
-  - model_name: deepseek-r1
-    litellm_params:
-      model: ollama/deepseek-r1:7b
+      model: ollama/llama3.2:3b
       api_base: os.environ/OLLAMA_BASE_URL
 
   - model_name: nomic-embed-text
+    litellm_params:
+      model: ollama/nomic-embed-text
+      api_base: os.environ/OLLAMA_BASE_URL
+
+  # Alias OpenAI-compatible para embedding (Manus usa este nome por padrão)
+  - model_name: text-embedding-3-small
     litellm_params:
       model: ollama/nomic-embed-text
       api_base: os.environ/OLLAMA_BASE_URL
@@ -73,29 +66,26 @@ model_list:
   #     api_key: os.environ/GROQ_API_KEY
 
   # ── Modelo padrão do Arcádia (Manus usa este) ─────────────────────────────────
-  # Prioridade: LLMFit → OpenAI (se configurado) → Ollama (sempre disponível)
-  # Para soberania total: remova o fallback para gpt-4o-mini
+  # Prioridade: LLMFit (TIER 1) → Ollama (TIER 2 — fallback)
   - model_name: arcadia-default
     litellm_params:
-      model: ollama/llama3.3
-      api_base: os.environ/OLLAMA_BASE_URL
-    model_info:
-      # fallbacks: ["gpt-4o-mini"]    # descomente para habilitar fallback externo
+      model: openai/llama3.2:3b
+      api_base: os.environ/LLMFIT_BASE_URL
+      api_key: os.environ/LLMFIT_API_KEY
 
 router_settings:
   routing_strategy: least-busy
   fallbacks:
-    - {"gpt-4o": ["llama3.3"]}
-    - {"gpt-4o-mini": ["llama3.3"]}
-    - {"arcadia-default": ["llama3.3"]}
+    - {"gpt-4o": ["llama3.2"]}
+    - {"gpt-4o-mini": ["llama3.2"]}
+    - {"arcadia-default": ["llama3.2"]}
+    - {"arcadia-finetuned": ["llama3.2"]}
+    - {"arcadia-embed": ["nomic-embed-text"]}
 
 litellm_settings:
   drop_params: true
   request_timeout: 120
   set_verbose: false
-  # Loga todas as chamadas no banco — essencial para auditoria e soberania
-  success_callback: ["langfuse"]
-  failure_callback: ["langfuse"]
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

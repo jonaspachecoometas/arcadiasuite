@@ -2985,6 +2985,7 @@ export default function BiWorkspace() {
             </TabsContent>
             <TabsContent value="advanced" className="mt-0">
               <SupersetAdvancedTab />
+
             </TabsContent>
           </Tabs>
         </div>
