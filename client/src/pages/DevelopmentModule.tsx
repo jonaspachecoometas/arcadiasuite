@@ -11,12 +11,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { 
+import {
   Code2, Database, Layout, GitBranch, BarChart3, FileText,
   Plus, Settings, Play, Zap, Layers, Puzzle, Palette,
   Terminal, Box, Workflow, PanelLeft, Table2, FormInput,
   ListChecks, PieChart, LineChart, Gauge, Bot, Code, Trash2, Save,
-  Sparkles, Rocket
+  Sparkles, Rocket, PenTool
 } from "lucide-react";
 import { useLocation } from "wouter";
 
@@ -27,8 +27,9 @@ import IDE from "./IDE";
 import DevAgent from "@/components/lowcode/DevAgent";
 import OpenClawPanel from "@/components/OpenClawPanel";
 import AutomationCenter from "./AutomationCenter";
+import DevCenter from "./DevCenter";
 
-type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent" | "openclaw" | "automationcenter";
+type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent" | "openclaw" | "automationcenter" | "designstudio";
 
 interface Dashboard {
   id: number;
@@ -276,6 +277,15 @@ export default function DevelopmentModule() {
       description: "Automações unificadas Central + XOS",
       icon: Workflow,
       color: "bg-blue-600",
+      count: 0,
+      category: "dev"
+    },
+    {
+      id: "designstudio" as ActiveTool,
+      name: "Design Studio",
+      description: "Projete e monte agentes autônomos",
+      icon: PenTool,
+      color: "bg-purple-600",
       count: 0,
       category: "dev"
     },
@@ -727,6 +737,7 @@ export default function DevelopmentModule() {
         {activeTool === "agent" && <DevAgent />}
         {activeTool === "openclaw" && <OpenClawPanel />}
         {activeTool === "automationcenter" && <AutomationCenter />}
+        {activeTool === "designstudio" && <DevCenter />}
       </div>
 
       <Dialog open={showNewDashboardDialog} onOpenChange={setShowNewDashboardDialog}>
