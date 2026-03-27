@@ -89,6 +89,111 @@ type AgentDef = {
   updatedAt: string;
 };
 
+const statusColor: Record<string, string> = {
+  draft: "bg-zinc-500",
+  assembling: "bg-blue-500",
+  ready: "bg-green-500",
+  deployed: "bg-purple-500",
+};
+
+const statusLabel: Record<string, string> = {
+  draft: "Rascunho",
+  assembling: "Montando...",
+  ready: "Pronto",
+  deployed: "Implantado",
+};
+
+// ── AssembleRow: linha da Assemble Line com painel de progresso da task ──────
+
+function AssembleRow({ def, taskStatus, onAssemble, assembling }: {
+  def: AgentDef;
+  taskStatus?: string;
+  onAssemble: () => void;
+  assembling: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const { data: taskData } = useQuery<{ success: boolean; task: any; subtasks: any[]; logs: any[] }>({
+    queryKey: [`/api/blackboard/task/${def.lastTaskId}`],
+    enabled: !!def.lastTaskId && def.status === "assembling" && expanded,
+    refetchInterval: 3000,
+  });
+
+  const subtasks: any[] = taskData?.subtasks ?? [];
+
+  return (
+    <div className="border-b last:border-b-0">
+      <div className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-sm">{def.name}</span>
+            <Badge className={`text-[10px] px-1.5 py-0.5 text-white ${statusColor[def.status]}`}>
+              {statusLabel[def.status]}
+            </Badge>
+            {def.status === "assembling" && (
+              <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+            )}
+          </div>
+          {def.description && <p className="text-xs text-zinc-500 truncate mt-0.5">{def.description}</p>}
+          {def.lastTaskId && (
+            <button
+              className="text-xs text-zinc-400 mt-0.5 flex items-center gap-1 hover:text-zinc-200 transition-colors"
+              onClick={() => setExpanded(e => !e)}
+            >
+              {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              Task #{def.lastTaskId}{taskStatus ? ` — ${taskStatus}` : ""}
+            </button>
+          )}
+        </div>
+        <div className="flex gap-2 shrink-0">
+          {def.status === "draft" && (
+            <Button size="sm" onClick={onAssemble} disabled={assembling} className="text-xs h-8">
+              {assembling ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Zap className="w-3 h-3 mr-1" />}
+              Montar
+            </Button>
+          )}
+          {def.status === "assembling" && def.lastTaskId && (
+            <Button size="sm" variant="ghost" className="text-xs h-8 px-3" onClick={() => setExpanded(e => !e)}>
+              {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Painel de progresso */}
+      {expanded && def.lastTaskId && (
+        <div className="px-6 pb-4 bg-zinc-950/50 border-t border-zinc-800">
+          {subtasks.length === 0 ? (
+            <p className="text-xs text-zinc-500 py-3 flex items-center gap-2">
+              <Loader2 className="w-3 h-3 animate-spin" /> Aguardando subtasks...
+            </p>
+          ) : (
+            <div className="space-y-1.5 pt-3">
+              {subtasks.map((st: any) => (
+                <div key={st.id} className="flex items-center gap-2 text-xs">
+                  {st.status === "completed" ? (
+                    <CheckCircle className="w-3 h-3 text-green-500 shrink-0" />
+                  ) : st.status === "failed" ? (
+                    <XCircle className="w-3 h-3 text-red-500 shrink-0" />
+                  ) : st.status === "in_progress" ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-blue-400 shrink-0" />
+                  ) : (
+                    <Clock className="w-3 h-3 text-zinc-500 shrink-0" />
+                  )}
+                  <span className={st.status === "completed" ? "text-zinc-300" : st.status === "failed" ? "text-red-400" : "text-zinc-500"}>
+                    {st.title || st.description?.slice(0, 60) || `Subtask #${st.id}`}
+                  </span>
+                  <span className="text-zinc-600 ml-auto shrink-0">{st.agentRole ?? ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgentFactoryTabs() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -269,20 +374,6 @@ function AgentFactoryTabs() {
     setEditorMode("markdown");
     setEditorContent("");
     setIsCreatingNew(true);
-  };
-
-  const statusColor: Record<string, string> = {
-    draft: "bg-zinc-500",
-    assembling: "bg-blue-500",
-    ready: "bg-green-500",
-    deployed: "bg-purple-500",
-  };
-
-  const statusLabel: Record<string, string> = {
-    draft: "Rascunho",
-    assembling: "Montando...",
-    ready: "Pronto",
-    deployed: "Implantado",
   };
 
   const galDefs = defs.filter(d =>
@@ -474,52 +565,17 @@ function AgentFactoryTabs() {
                 <p className="text-xs">Crie agentes na aba Design e monte-os aqui.</p>
               </div>
             ) : (
-              <div className="divide-y">
+              <div>
                 {defs.filter(d => d.status === "draft" || d.status === "assembling").map(def => {
                   const taskStatus = assembleTaskStatus[def.id];
                   return (
-                    <div key={def.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm">{def.name}</span>
-                          <Badge className={`text-[10px] px-1.5 py-0.5 text-white ${statusColor[def.status]}`}>
-                            {statusLabel[def.status]}
-                          </Badge>
-                          {def.status === "assembling" && (
-                            <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
-                          )}
-                        </div>
-                        {def.description && <p className="text-xs text-zinc-500 truncate mt-0.5">{def.description}</p>}
-                        {def.lastTaskId && (
-                          <p className="text-xs text-zinc-400 mt-0.5">
-                            Task #{def.lastTaskId}
-                            {taskStatus && ` — ${taskStatus}`}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex gap-2 shrink-0">
-                        {def.status === "draft" && (
-                          <Button
-                            size="sm"
-                            onClick={() => assembleMutation.mutate(def.id)}
-                            disabled={assembleMutation.isPending}
-                            className="text-xs h-8"
-                          >
-                            {assembleMutation.isPending ? (
-                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
-                            ) : (
-                              <Zap className="w-3 h-3 mr-1" />
-                            )}
-                            Montar
-                          </Button>
-                        )}
-                        {def.status === "assembling" && (
-                          <span className="text-xs text-blue-500 flex items-center gap-1">
-                            <Loader2 className="w-3 h-3 animate-spin" /> Processando...
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <AssembleRow
+                      key={def.id}
+                      def={def}
+                      taskStatus={taskStatus}
+                      onAssemble={() => assembleMutation.mutate(def.id)}
+                      assembling={assembleMutation.isPending}
+                    />
                   );
                 })}
               </div>
