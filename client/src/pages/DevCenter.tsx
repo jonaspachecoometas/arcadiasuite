@@ -62,9 +62,11 @@ import {
   Square,
   Fingerprint,
   PanelLeft,
-  Save
+  Save,
+  Info
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import DevHistory from "@/components/DevHistory";
@@ -103,8 +105,9 @@ function AgentFactoryTabs() {
   const [assemblePollingId, setAssemblePollingId] = useState<number | null>(null);
   const [assembleTaskStatus, setAssembleTaskStatus] = useState<Record<number, string>>({});
 
-  // ---- Galeria filter ----
+  // ---- Galeria filter + detail ----
   const [galFilter, setGalFilter] = useState("");
+  const [galDetailDef, setGalDetailDef] = useState<(typeof defs)[0] | null>(null);
 
   const { data: defsData, isLoading: defsLoading } = useQuery<{ success: boolean; data: AgentDef[] }>({
     queryKey: ["/api/agent-defs"],
@@ -659,11 +662,58 @@ function AgentFactoryTabs() {
                   >
                     <GitBranch className="w-3 h-3" />
                   </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setGalDetailDef(def)}
+                    className="text-xs h-8 px-3"
+                    title="Ver spec"
+                  >
+                    <Info className="w-3 h-3" />
+                  </Button>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
+
+        {/* Dialog de detalhes do agente */}
+        <Dialog open={!!galDetailDef} onOpenChange={open => { if (!open) setGalDetailDef(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Brain className="w-4 h-4 text-purple-400" />
+                {galDetailDef?.name}
+                <Badge className="text-[10px] px-1.5 py-0.5 bg-purple-500 text-white ml-1">v{galDetailDef?.version}</Badge>
+              </DialogTitle>
+              {galDetailDef?.description && (
+                <DialogDescription>{galDetailDef.description}</DialogDescription>
+              )}
+            </DialogHeader>
+            <div className="space-y-3 mt-2">
+              <div className="flex items-center gap-2 text-xs text-zinc-400">
+                <Badge variant="outline" className="text-[10px]">
+                  {(galDetailDef?.spec as any)?.mode ?? "markdown"}
+                </Badge>
+                <span>·</span>
+                <span>Criado em {galDetailDef ? new Date(galDetailDef.createdAt).toLocaleDateString("pt-BR") : ""}</span>
+              </div>
+              <ScrollArea className="h-64 rounded-md border border-zinc-800 bg-zinc-950 p-3">
+                <pre className="text-xs text-zinc-300 whitespace-pre-wrap font-mono">
+                  {(galDetailDef?.spec as any)?.content ?? JSON.stringify(galDetailDef?.spec, null, 2)}
+                </pre>
+              </ScrollArea>
+              <div className="flex gap-2 pt-1">
+                <Button size="sm" className="flex-1 text-xs h-8" onClick={() => { if (galDetailDef) runMutation.mutate(galDetailDef.id); setGalDetailDef(null); }}>
+                  <Play className="w-3 h-3 mr-1" /> Executar
+                </Button>
+                <Button size="sm" variant="outline" className="text-xs h-8 px-3" onClick={() => { if (galDetailDef) forkMutation.mutate(galDetailDef.id); setGalDetailDef(null); }}>
+                  <GitBranch className="w-3 h-3 mr-1" /> Fork
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </TabsContent>
     </>
   );
