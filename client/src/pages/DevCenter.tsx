@@ -584,8 +584,27 @@ function AgentFactoryTabs() {
         </Card>
       </TabsContent>
 
-      {/* ---- TAB: DEPLOY ---- */}
+      {/* ---- TAB: DEPLOY / ORCHESTRATE CENTER ---- */}
       <TabsContent value="deploy" className="space-y-4">
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Total de agentes", value: defs.length, icon: <Brain className="w-4 h-4 text-zinc-400" /> },
+            { label: "Prontos p/ deploy", value: defs.filter(d => d.status === "ready").length, icon: <CheckCircle className="w-4 h-4 text-green-400" /> },
+            { label: "Implantados", value: defs.filter(d => d.status === "deployed").length, icon: <Rocket className="w-4 h-4 text-purple-400" /> },
+          ].map(s => (
+            <Card key={s.label} className="bg-zinc-900/50 border-zinc-800">
+              <CardContent className="p-4 flex items-center gap-3">
+                {s.icon}
+                <div>
+                  <p className="text-xl font-bold leading-none">{s.value}</p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">{s.label}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
         <Card>
           <CardHeader className="border-b py-4 px-6">
             <div className="flex items-center gap-3">
@@ -612,7 +631,7 @@ function AgentFactoryTabs() {
             ) : (
               <div className="divide-y">
                 {defs.filter(d => d.status === "ready" || d.status === "deployed").map(def => (
-                  <div key={def.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50">
+                  <div key={def.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50/5">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">{def.name}</span>
@@ -622,11 +641,22 @@ function AgentFactoryTabs() {
                         <span className="text-[10px] text-zinc-400">v{def.version}</span>
                       </div>
                       {def.description && <p className="text-xs text-zinc-500 truncate mt-0.5">{def.description}</p>}
-                      {def.lastTaskId && (
-                        <p className="text-xs text-zinc-400 mt-0.5">Último artefato: Task #{def.lastTaskId}</p>
-                      )}
+                      <p className="text-[10px] text-zinc-600 mt-0.5">
+                        Atualizado {new Date(def.updatedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                        {def.lastTaskId ? ` · Task #${def.lastTaskId}` : ""}
+                      </p>
                     </div>
                     <div className="flex gap-2 shrink-0">
+                      {def.status === "deployed" && (
+                        <Button
+                          size="sm"
+                          onClick={() => runMutation.mutate(def.id)}
+                          disabled={runMutation.isPending}
+                          className="text-xs h-8"
+                        >
+                          <Play className="w-3 h-3 mr-1" /> Executar
+                        </Button>
+                      )}
                       {def.status === "ready" && (
                         <Button
                           size="sm"
@@ -643,8 +673,9 @@ function AgentFactoryTabs() {
                         onClick={() => redraftMutation.mutate(def.id)}
                         disabled={redraftMutation.isPending}
                         className="text-xs h-8"
+                        title="Voltar para rascunho e remontar"
                       >
-                        <RotateCcw className="w-3 h-3 mr-1" /> Re-montar
+                        <RotateCcw className="w-3 h-3" />
                       </Button>
                     </div>
                   </div>
