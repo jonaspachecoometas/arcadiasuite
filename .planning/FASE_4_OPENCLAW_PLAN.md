@@ -3,7 +3,7 @@
 **Fase:** 4
 **Data Início:** 2026-03-26
 **Prazo:** 2026-04-08 (Semanas 7-8)
-**Status:** 🔄 Em Planejamento
+**Status:** 🔄 Sprint 3 Pendente (Sprint 1 e 2 concluídos)
 
 ---
 
@@ -92,9 +92,9 @@ client/src/components/openclaw/
 
 ## 4. TASKS DETALHADAS
 
-### SPRINT 1 (26-27/03): PatternDetector Backend
+### SPRINT 1 (26-27/03): PatternDetector Backend — ✅ COMPLETO
 
-#### Task 1.1: Criar PatternDetector.ts
+#### Task 1.1: Criar PatternDetector.ts ✅
 **Arquivo:** `server/modules/openclaw/PatternDetector.ts`
 **Objetivo:** Analisar eventos de usuário e detectar padrões
 
@@ -118,7 +118,7 @@ export class PatternDetector {
 **Saída:** Pattern objects armazenados em Neo4j + Socket.IO event
 **Dependência:** Learning API funcionando ✅
 
-#### Task 1.2: Criar OpenClawEngine.ts
+#### Task 1.2: Criar OpenClawEngine.ts ✅
 **Arquivo:** `server/modules/openclaw/OpenClawEngine.ts`
 **Objetivo:** Orquestração central de OpenClaw
 
@@ -138,7 +138,7 @@ export class OpenClawEngine {
 **Saída:** Sugestões + Skills gerados
 **Evento:** Socket.IO broadcast `/openclaw/pattern-detected`
 
-#### Task 1.3: Criar SkillEmergence.ts
+#### Task 1.3: Criar SkillEmergence.ts ✅
 **Arquivo:** `server/modules/openclaw/SkillEmergence.ts`
 **Objetivo:** Integração com Blackboard para codegen
 
@@ -158,7 +158,7 @@ export class SkillEmergence {
 **Integração:** POST `/api/blackboard/generate-skill`
 **Database:** skills table (com status: 'draft')
 
-#### Task 1.4: Criar rotas OpenClaw
+#### Task 1.4: Criar rotas OpenClaw ✅
 **Arquivo:** `server/modules/openclaw/routes.ts`
 **Rotas:**
 ```
@@ -168,7 +168,7 @@ POST /api/openclaw/confirm-skill           ← Usuário confirma sugestão
 GET  /api/openclaw/suggestions             ← Histórico de sugestões
 ```
 
-#### Task 1.5: Integrar em server/index.ts
+#### Task 1.5: Integrar em server/index.ts ✅
 **Arquivo:** `server/index.ts`
 **Ação:** Importar rotas OpenClaw e carregá-las
 
@@ -177,9 +177,9 @@ import openclawRoutes from "./modules/openclaw/routes";
 app.use("/api/openclaw", openclawRoutes);
 ```
 
-### SPRINT 2 (28-29/03): Frontend Widgets
+### SPRINT 2 (28-29/03): Frontend Widgets — ✅ COMPLETO (commit 5231166)
 
-#### Task 2.1: Criar OpenClawWidget.tsx
+#### Task 2.1: Criar OpenClawWidget.tsx ✅
 **Arquivo:** `client/src/components/openclaw/OpenClawWidget.tsx`
 **Objetivo:** Widget flutuante que recebe notificações de padrões
 
@@ -202,7 +202,7 @@ export function OpenClawWidget() {
 **Socket.IO:** Escuta evento `/openclaw/pattern-detected`
 **Trigger:** Modal SkillSuggestion
 
-#### Task 2.2: Criar SkillSuggestion.tsx
+#### Task 2.2: Criar SkillSuggestion.tsx ✅
 **Arquivo:** `client/src/components/openclaw/SkillSuggestion.tsx`
 **Objetivo:** Modal com preview da skill sugerida
 
@@ -227,7 +227,7 @@ export function SkillSuggestion({ pattern, suggestion }) {
 **Integração:** Chama `POST /api/openclaw/confirm-skill`
 **Feedback:** Toast notification
 
-#### Task 2.3: Hook useAgentEmergence.ts
+#### Task 2.3: Hook useAgentEmergence.ts ✅
 **Arquivo:** `client/src/hooks/useAgentEmergence.ts`
 **Objetivo:** Lógica de emergência de agentes
 
@@ -248,7 +248,7 @@ export function useAgentEmergence(userId: string) {
 }
 ```
 
-#### Task 2.4: Integrar Widget em layout principal
+#### Task 2.4: Integrar Widget em layout principal ✅
 **Arquivo:** `client/src/App.tsx` ou `client/src/layouts/MainLayout.tsx`
 **Ação:** Adicionar OpenClawWidget ao layout persistente
 
@@ -265,7 +265,7 @@ export default function App() {
 }
 ```
 
-### SPRINT 3 (30-31/03): Configuração e Integração
+### SPRINT 3 (30-31/03): Configuração e Integração — ⏳ PRÓXIMO
 
 #### Task 3.1: Criar arcadia.config.yaml
 **Arquivo:** `server/modules/openclaw/config/arcadia.config.yaml`
@@ -402,10 +402,12 @@ CREATE INDEX idx_detected_patterns_user_tenant
 
 | Data | Sprint | Tasks | Status |
 |------|--------|-------|--------|
-| 26-27/03 | 1 | PatternDetector backend | ⏳ Próximo |
-| 28-29/03 | 2 | OpenClawWidget frontend | ⏳ Próximo |
-| 30-31/03 | 3 | Configuração + testes | ⏳ Próximo |
+| 26-27/03 | 1 | PatternDetector backend | ✅ Completo |
+| 26/03 | 2 | OpenClawWidget frontend | ✅ Completo (commit 5231166) |
+| 26/03 | 3 | Migration DB + testes | ⏳ Próximo |
 | 01-08/04 | Buffer | Refinamento, testes E2E | ⏳ Próximo |
+
+**Nota:** Trabalho em `/opt/arcadia_merged/` (diretório canônico do projeto).
 
 ---
 
@@ -461,11 +463,10 @@ docs(openclaw): Documentação e testes
 
 ## 9. PRÓXIMAS AÇÕES
 
-1. ✅ **Hoje (26/03):** Aprovar este plano
-2. ⏳ **Amanhã (27/03):** Começar Task 1.1 (PatternDetector.ts)
-3. ⏳ **28/03:** Começar Sprint 2 (Frontend)
-4. ⏳ **30/03:** Sprint 3 (Config + testes)
-5. ⏳ **01/04:** Refinamento e E2E tests
+1. ✅ **26/03:** Sprint 1 concluído (PatternDetector, OpenClawEngine, SkillEmergence, routes, config)
+2. ✅ **26/03:** Sprint 2 concluído (OpenClawWidget, SkillSuggestion, useAgentEmergence, App.tsx — commit 5231166)
+3. ⏳ **Agora:** Sprint 3 — migration SQL + vitest + testes unitários em `/opt/arcadia_merged/`
+4. ⏳ **01-08/04:** Refinamento e testes E2E
 
 ---
 

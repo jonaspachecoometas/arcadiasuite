@@ -7513,3 +7513,67 @@ export type Skill = typeof skills.$inferSelect;
 export type InsertSkill = z.infer<typeof insertSkillSchema>;
 export type SkillExecution = typeof skillExecutions.$inferSelect;
 export type InsertSkillExecution = z.infer<typeof insertSkillExecutionSchema>;
+
+// ============================================================
+// OpenClaw — Fase 4: Detecção de Padrões e Emergência de Skills
+// ============================================================
+
+export const detectedPatterns = pgTable("detected_patterns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  userId: varchar("user_id").references(() => users.id),
+
+  // Padrão detectado
+  actionType: varchar("action_type", { length: 100 }).notNull(),
+  description: text("description"),
+  frequency: integer("frequency").notNull().default(0),
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull().default("0"),
+
+  // Janela de análise
+  firstSeenAt: timestamp("first_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  lastSeenAt: timestamp("last_seen_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+
+  // Metadados do padrão (contexto, módulos envolvidos, etc.)
+  metadata: jsonb("metadata").default({}),
+
+  // Estado do ciclo de vida
+  status: varchar("status", { length: 20 }).notNull().default("active"), // active | archived | converted
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const skillSuggestions = pgTable("skill_suggestions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  patternId: uuid("pattern_id").references(() => detectedPatterns.id, { onDelete: "cascade" }),
+  tenantId: integer("tenant_id").references(() => tenants.id),
+  userId: varchar("user_id").references(() => users.id),
+
+  // Skill sugerida
+  suggestedSkillName: varchar("suggested_skill_name", { length: 200 }).notNull(),
+  suggestedDescription: text("suggested_description"),
+  estimatedAutomation: text("estimated_automation"),
+  confidence: numeric("confidence", { precision: 4, scale: 3 }).notNull().default("0"),
+
+  // Skill gerada (após confirmação)
+  generatedSkillId: uuid("generated_skill_id").references(() => skills.id),
+
+  // Estado da sugestão
+  status: varchar("status", { length: 20 }).notNull().default("pending"), // pending | accepted | rejected | expired
+
+  // Rastreabilidade
+  source: varchar("source", { length: 50 }).notNull().default("openclaw"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  reviewedAt: timestamp("reviewed_at"),
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertDetectedPatternSchema = createInsertSchema(detectedPatterns).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSkillSuggestionSchema = createInsertSchema(skillSuggestions).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type DetectedPattern = typeof detectedPatterns.$inferSelect;
+export type InsertDetectedPattern = z.infer<typeof insertDetectedPatternSchema>;
+export type SkillSuggestionRecord = typeof skillSuggestions.$inferSelect;
+export type InsertSkillSuggestion = z.infer<typeof insertSkillSuggestionSchema>;
