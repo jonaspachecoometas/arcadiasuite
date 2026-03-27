@@ -691,7 +691,7 @@ export default function DevelopmentModule() {
   );
 
   return (
-    <div className="h-full flex bg-gray-50">
+    <div className="h-screen flex bg-gray-50">
       <div className="w-16 bg-gray-900 flex flex-col items-center py-4 gap-2 overflow-y-auto h-full">
         <button
           onClick={() => setActiveTool("home")}
@@ -715,8 +715,8 @@ export default function DevelopmentModule() {
         ))}
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        {activeTool === "home" && renderHome()}
+      <div className="flex-1 h-full overflow-hidden">
+        {activeTool === "home" && <div className="h-full overflow-y-auto">{renderHome()}</div>}
         {activeTool === "doctypes" && <DocTypeBuilder />}
         {activeTool === "pages" && <PageBuilder />}
         {activeTool === "workflows" && <WorkflowBuilder />}

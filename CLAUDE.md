@@ -45,9 +45,38 @@ AI_INTEGRATIONS_OPENAI_API_KEY=${LITELLM_API_KEY}
 - `PLANO_EVOLUCAO_ARCADIA.md` — roadmap e evolução
 - `MAPA_SISTEMA_ARCADIA.md` — mapa do sistema
 
-## Branch de desenvolvimento
-Sempre commitar em: `claude/analyze-project-0mXjP`
-Push: `git push -u origin claude/analyze-project-0mXjP`
+## Git e Deploy
+
+### Remote canônico
+- **Remote:** `origin` → `github.com/jonaspachecoometas/arcadiasuite`
+- **Branch de produção:** `Servidor` (único branch ativo — sempre commitar aqui)
+- Push: `git push origin Servidor`
+
+> Os remotes `gitea`, `arcadiasuite` e `gitsafe-backup` existem mas são secundários.
+> O Coolify está em processo de reconexão para apontar para `origin/Servidor`.
+
+### Deploy em produção
+O site roda via `docker compose` manual em `/opt/arcadia_merged/`.
+**Comando para atualizar o app após mudança de código:**
+```bash
+cd /opt/arcadia_merged
+docker compose -f docker-compose.prod.yml build app
+docker compose -f docker-compose.prod.yml up -d app
+```
+- Reconstrói só o container `app` (~3-5 min)
+- Banco, Redis, MiroFlow, Python services **não são afetados**
+- Downtime: ~30 segundos durante a troca do container
+
+### Serviços em execução (não mexer sem necessidade)
+```
+arcadia-prod-app-1        porta 5000  → suite.onboardbi.com.br (Traefik)
+arcadia-prod-db-1         PostgreSQL  (dados em volume Docker)
+arcadia-prod-redis-1      Redis
+arcadia-prod-miroflow-1   MiroFlow agente
+arcadia-prod-litellm-1    LiteLLM gateway
+arcadia-prod-superset-1   Superset BI
+arcadia-prod-{contabil,bi,automation,fisco,embeddings}-1  Python services
+```
 
 ## O que está implementado
 - ✅ Manus (agente autônomo, 30+ ferramentas)
