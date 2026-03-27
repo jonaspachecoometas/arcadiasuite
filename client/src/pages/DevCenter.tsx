@@ -220,12 +220,12 @@ function AgentFactoryTabs() {
   });
   const defs = defsData?.data || [];
 
-  // Poll task status for assembling defs
+  // Poll task status for assembling defs — verifica imediatamente e depois a cada 3s
   useEffect(() => {
     const assembling = defs.filter(d => d.status === "assembling" && d.lastTaskId);
     if (assembling.length === 0) return;
 
-    const interval = setInterval(async () => {
+    async function checkAll() {
       for (const def of assembling) {
         if (!def.lastTaskId) continue;
         try {
@@ -233,7 +233,6 @@ function AgentFactoryTabs() {
           const data = await res.json();
           const taskStatus = data?.task?.status;
           if (taskStatus === "completed" || taskStatus === "failed") {
-            // Mark agent as ready or draft
             await fetch(`/api/agent-defs/${def.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
@@ -245,7 +244,11 @@ function AgentFactoryTabs() {
           setAssembleTaskStatus(prev => ({ ...prev, [def.id]: taskStatus || "unknown" }));
         } catch { /* ignore */ }
       }
-    }, 3000);
+    }
+
+    // Verifica imediatamente (cobre tasks que já completaram antes do polling iniciar)
+    checkAll();
+    const interval = setInterval(checkAll, 3000);
     return () => clearInterval(interval);
   }, [defs, queryClient]);
 
