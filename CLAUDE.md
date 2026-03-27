@@ -48,16 +48,24 @@ AI_INTEGRATIONS_OPENAI_API_KEY=${LITELLM_API_KEY}
 ## Git e Deploy
 
 ### Remote canônico
-- **Remote:** `origin` → `github.com/jonaspachecoometas/arcadiasuite`
-- **Branch de produção:** `Servidor` (único branch ativo — sempre commitar aqui)
-- Push: `git push origin Servidor`
+- **Remote principal:** `gitea` → `http://10.0.1.7:3000/arcadia-admin/arcadiasuite` (Gitea interno)
+- **Branch de produção:** `main`
+- **Push de deploy:** `git push gitea Servidor:main`
 
-> Os remotes `gitea`, `arcadiasuite` e `gitsafe-backup` existem mas são secundários.
-> O Coolify está em processo de reconexão para apontar para `origin/Servidor`.
+> O Coolify monitora o Gitea (`https://git.onboardbi.com.br/arcadia-admin/arcadiasuite`, branch `main`).
+> Push para `gitea` → Coolify detecta → build automático → rolling deploy.
+> O remote `origin` (GitHub) é backup secundário — push opcional para manter sincronizado.
+> O desenvolvimento local ocorre na branch `Servidor` — fazer push para `main` no Gitea ao deployar.
 
 ### Deploy em produção
-O site roda via `docker compose` manual em `/opt/arcadia_merged/`.
-**Comando para atualizar o app após mudança de código:**
+**Fluxo normal (CI/CD automático):**
+```bash
+cd /opt/arcadia_merged
+git push gitea Servidor:main
+```
+O Coolify faz o build e deploy automaticamente (~3-5 min).
+
+**Deploy manual (emergência):**
 ```bash
 cd /opt/arcadia_merged
 docker compose -f docker-compose.prod.yml build app
