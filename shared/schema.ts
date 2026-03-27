@@ -7589,3 +7589,34 @@ export type DetectedPattern = typeof detectedPatterns.$inferSelect;
 export type InsertDetectedPattern = z.infer<typeof insertDetectedPatternSchema>;
 export type SkillSuggestionRecord = typeof skillSuggestions.$inferSelect;
 export type InsertSkillSuggestion = z.infer<typeof insertSkillSuggestionSchema>;
+
+// ============================================================================
+// PHASE 6: Agent Definitions (Dev Center — Fábrica de Agentes)
+// ============================================================================
+
+export const arcadiaAgentDefs = pgTable("arcadia_agent_defs", {
+  id: serial("id").primaryKey(),
+  tenantId: varchar("tenant_id"),
+  userId: varchar("user_id").references(() => users.id),
+
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+
+  // spec: { mode: "markdown" | "typescript" | "visual", content: string }
+  spec: jsonb("spec").notNull().default({}),
+
+  // draft | assembling | ready | deployed
+  status: varchar("status", { length: 30 }).notNull().default("draft"),
+  version: integer("version").notNull().default(1),
+
+  // FK para blackboard_tasks (nullable — só após montar)
+  lastTaskId: integer("last_task_id"),
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertAgentDefSchema = createInsertSchema(arcadiaAgentDefs).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type AgentDef = typeof arcadiaAgentDefs.$inferSelect;
+export type InsertAgentDef = z.infer<typeof insertAgentDefSchema>;

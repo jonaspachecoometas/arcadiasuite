@@ -68,6 +68,7 @@ import { startXosScheduler } from "./xos/scheduler";
 import { registerOpenClawRoutes } from "./openclaw/routes";
 import { startPatternDetector } from "./openclaw/pattern-detector";
 import { registerAutomationFabricRoutes } from "./automation-fabric/routes";
+import agentDefsRoutes from "./agent-defs/routes";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -170,6 +171,9 @@ export async function registerRoutes(
 
   // Automation Fabric — runtime unificado (Phase 5)
   registerAutomationFabricRoutes(app);
+
+  // Agent Defs — fábrica de agentes (Phase 6)
+  app.use("/api/agent-defs", agentDefsRoutes);
   
   // Central de Protocolos (MCP, A2A, AP2, UCP)
   app.use("/api", protocolsRoutes);

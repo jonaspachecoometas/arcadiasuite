@@ -61,13 +61,615 @@ import {
   CheckSquare,
   Square,
   Fingerprint,
-  PanelLeft
+  PanelLeft,
+  Save
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import DevHistory from "@/components/DevHistory";
 
+// ============================================================================
+// PHASE 6: Agent Factory Tabs (Design, Assemble, Deploy, Galeria)
+// ============================================================================
+
+type AgentDef = {
+  id: number;
+  name: string;
+  description: string | null;
+  spec: { mode: "markdown" | "typescript" | "visual"; content: string } | null;
+  status: "draft" | "assembling" | "ready" | "deployed";
+  version: number;
+  lastTaskId: number | null;
+  tenantId: string | null;
+  userId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function AgentFactoryTabs() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // ---- Design tab state ----
+  const [selectedDefId, setSelectedDefId] = useState<number | null>(null);
+  const [editorMode, setEditorMode] = useState<"markdown" | "typescript" | "visual">("markdown");
+  const [editorContent, setEditorContent] = useState("");
+  const [defName, setDefName] = useState("");
+  const [defDescription, setDefDescription] = useState("");
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+
+  // ---- Assemble tab state ----
+  const [assemblePollingId, setAssemblePollingId] = useState<number | null>(null);
+  const [assembleTaskStatus, setAssembleTaskStatus] = useState<Record<number, string>>({});
+
+  // ---- Galeria filter ----
+  const [galFilter, setGalFilter] = useState("");
+
+  const { data: defsData, isLoading: defsLoading } = useQuery<{ success: boolean; data: AgentDef[] }>({
+    queryKey: ["/api/agent-defs"],
+    refetchInterval: assemblePollingId ? 3000 : false,
+  });
+  const defs = defsData?.data || [];
+
+  // Poll task status for assembling defs
+  useEffect(() => {
+    const assembling = defs.filter(d => d.status === "assembling" && d.lastTaskId);
+    if (assembling.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const def of assembling) {
+        if (!def.lastTaskId) continue;
+        try {
+          const res = await fetch(`/api/blackboard/task/${def.lastTaskId}`, { credentials: "include" });
+          const data = await res.json();
+          const taskStatus = data?.task?.status;
+          if (taskStatus === "completed" || taskStatus === "failed") {
+            // Mark agent as ready or draft
+            await fetch(`/api/agent-defs/${def.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify({ status: taskStatus === "completed" ? "ready" : "draft" }),
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+          }
+          setAssembleTaskStatus(prev => ({ ...prev, [def.id]: taskStatus || "unknown" }));
+        } catch { /* ignore */ }
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [defs, queryClient]);
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/agent-defs", {
+        name: defName,
+        description: defDescription,
+        spec: { mode: editorMode, content: editorContent },
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+      setSelectedDefId(data.data.id);
+      setIsCreatingNew(false);
+      toast({ title: "Agente criado", description: data.data.name });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("PATCH", `/api/agent-defs/${id}`, {
+        name: defName,
+        description: defDescription,
+        spec: { mode: editorMode, content: editorContent },
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+      toast({ title: "Salvo" });
+    },
+    onError: (e: any) => toast({ title: "Erro ao salvar", description: e.message, variant: "destructive" }),
+  });
+
+  const assembleMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/agent-defs/${id}/assemble`, {});
+      return res.json();
+    },
+    onSuccess: (data, id) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+      setAssemblePollingId(id);
+      toast({ title: "Montagem iniciada", description: `Task #${data.taskId}` });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const deployMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/agent-defs/${id}/deploy`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+      toast({ title: "Deploy realizado!" });
+    },
+    onError: (e: any) => toast({ title: "Erro no deploy", description: e.message, variant: "destructive" }),
+  });
+
+  const redraftMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/agent-defs/${id}/redraft`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+      toast({ title: "Volta para rascunho" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const runMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/agent-defs/${id}/run`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({ title: "Execução iniciada", description: `Task #${data.taskId}` });
+    },
+    onError: (e: any) => toast({ title: "Erro ao executar", description: e.message, variant: "destructive" }),
+  });
+
+  const forkMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/agent-defs/${id}/fork`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+      toast({ title: "Fork criado", description: data.data.name });
+    },
+    onError: (e: any) => toast({ title: "Erro ao fazer fork", description: e.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/agent-defs/${id}`, undefined);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/agent-defs"] });
+      setSelectedDefId(null);
+      toast({ title: "Excluído" });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  // Quando seleciona um def existente, carrega os campos
+  const selectDef = (def: AgentDef) => {
+    setSelectedDefId(def.id);
+    setDefName(def.name);
+    setDefDescription(def.description || "");
+    const spec = def.spec || { mode: "markdown", content: "" };
+    setEditorMode(spec.mode || "markdown");
+    setEditorContent(spec.content || "");
+    setIsCreatingNew(false);
+  };
+
+  const startNew = () => {
+    setSelectedDefId(null);
+    setDefName("");
+    setDefDescription("");
+    setEditorMode("markdown");
+    setEditorContent("");
+    setIsCreatingNew(true);
+  };
+
+  const statusColor: Record<string, string> = {
+    draft: "bg-zinc-500",
+    assembling: "bg-blue-500",
+    ready: "bg-green-500",
+    deployed: "bg-purple-500",
+  };
+
+  const statusLabel: Record<string, string> = {
+    draft: "Rascunho",
+    assembling: "Montando...",
+    ready: "Pronto",
+    deployed: "Implantado",
+  };
+
+  const galDefs = defs.filter(d =>
+    d.status === "deployed" &&
+    (d.name.toLowerCase().includes(galFilter.toLowerCase()) ||
+      (d.description || "").toLowerCase().includes(galFilter.toLowerCase()))
+  );
+
+  return (
+    <>
+      {/* ---- TAB: DESIGN ---- */}
+      <TabsContent value="design" className="space-y-4">
+        <div className="grid grid-cols-[260px_1fr] gap-4 h-[calc(100vh-240px)]">
+          {/* Lista de defs */}
+          <Card className="flex flex-col overflow-hidden">
+            <CardHeader className="border-b py-3 px-4">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-purple-500" /> Agentes
+                </CardTitle>
+                <Button size="sm" variant="ghost" onClick={startNew} className="h-7 px-2 text-xs">
+                  + Novo
+                </Button>
+              </div>
+            </CardHeader>
+            <ScrollArea className="flex-1">
+              {defsLoading ? (
+                <div className="flex items-center justify-center h-24">
+                  <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
+                </div>
+              ) : defs.length === 0 ? (
+                <p className="text-xs text-zinc-500 text-center py-8">Nenhum agente ainda.<br />Clique em "+ Novo" para criar.</p>
+              ) : (
+                <div className="divide-y">
+                  {defs.map(def => (
+                    <button
+                      key={def.id}
+                      onClick={() => selectDef(def)}
+                      className={`w-full text-left px-4 py-3 hover:bg-zinc-50 transition-colors ${selectedDefId === def.id ? "bg-purple-50 border-l-2 border-purple-500" : ""}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium truncate">{def.name}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded text-white shrink-0 ${statusColor[def.status] || "bg-zinc-400"}`}>
+                          {statusLabel[def.status] || def.status}
+                        </span>
+                      </div>
+                      {def.description && (
+                        <p className="text-xs text-zinc-500 truncate mt-0.5">{def.description}</p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </Card>
+
+          {/* Editor */}
+          <Card className="flex flex-col overflow-hidden">
+            {(selectedDefId || isCreatingNew) ? (
+              <>
+                <CardHeader className="border-b py-3 px-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1 space-y-1">
+                      <Input
+                        value={defName}
+                        onChange={e => setDefName(e.target.value)}
+                        placeholder="Nome do agente"
+                        className="h-7 text-sm font-medium"
+                      />
+                      <Input
+                        value={defDescription}
+                        onChange={e => setDefDescription(e.target.value)}
+                        placeholder="Descrição (opcional)"
+                        className="h-6 text-xs text-zinc-500"
+                      />
+                    </div>
+                    <div className="flex gap-1">
+                      {(["markdown", "typescript", "visual"] as const).map(m => (
+                        <Button
+                          key={m}
+                          size="sm"
+                          variant={editorMode === m ? "default" : "outline"}
+                          onClick={() => setEditorMode(m)}
+                          className="h-7 px-2 text-xs capitalize"
+                        >
+                          {m === "markdown" ? "Markdown" : m === "typescript" ? "TypeScript" : "Visual"}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      {isCreatingNew ? (
+                        <Button
+                          size="sm"
+                          onClick={() => createMutation.mutate()}
+                          disabled={!defName.trim() || createMutation.isPending}
+                          className="h-7 px-3 text-xs"
+                        >
+                          {createMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
+                          Criar
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => saveMutation.mutate(selectedDefId!)}
+                            disabled={saveMutation.isPending}
+                            className="h-7 px-3 text-xs"
+                          >
+                            {saveMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3 mr-1" />}
+                            Salvar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => deleteMutation.mutate(selectedDefId!)}
+                            disabled={deleteMutation.isPending}
+                            className="h-7 px-2 text-xs text-red-500 hover:text-red-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <div className="flex-1 overflow-hidden">
+                  {editorMode === "visual" ? (
+                    <ScrollArea className="h-full p-4">
+                      <p className="text-xs text-zinc-500 mb-3">Defina os nós do agente em JSON (name, type, connections):</p>
+                      <Textarea
+                        value={editorContent}
+                        onChange={e => setEditorContent(e.target.value)}
+                        placeholder={`[\n  { "name": "Coletar dados", "type": "skill", "skill": "/skill/consulta_vendas" },\n  { "name": "Analisar", "type": "skill", "skill": "/skill:system/analise_tendencia" },\n  { "name": "Notificar", "type": "action", "tool": "/tool/whatsapp_send" }\n]`}
+                        className="min-h-[400px] font-mono text-xs resize-none border-zinc-200"
+                      />
+                    </ScrollArea>
+                  ) : (
+                    <Textarea
+                      value={editorContent}
+                      onChange={e => setEditorContent(e.target.value)}
+                      placeholder={
+                        editorMode === "markdown"
+                          ? "# Nome do Agente\n\n## Objetivo\nDescreva o que este agente faz...\n\n## Skills utilizadas\n- /skill/consulta_vendas\n- /skill:system/analise_tendencia\n\n## Fluxo\n1. Coletar dados de vendas\n2. Analisar tendências\n3. Notificar gestor se necessário\n\n## Triggers\n- Schedule: toda segunda às 9h\n- Manual: via Dev Center"
+                          : "// Especificação TypeScript do agente\nimport { BaseAgent } from '@arcadia/agent-sdk';\n\nexport class MeuAgente extends BaseAgent {\n  // ...\n}"
+                      }
+                      className="h-full w-full resize-none border-0 rounded-none font-mono text-xs focus-visible:ring-0"
+                    />
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center text-zinc-400 gap-3">
+                <Layers className="w-12 h-12 opacity-30" />
+                <p className="text-sm">Selecione um agente ou crie um novo</p>
+                <Button size="sm" onClick={startNew} className="text-xs">
+                  + Novo Agente
+                </Button>
+              </div>
+            )}
+          </Card>
+        </div>
+      </TabsContent>
+
+      {/* ---- TAB: ASSEMBLE ---- */}
+      <TabsContent value="assemble" className="space-y-4">
+        <Card>
+          <CardHeader className="border-b py-4 px-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-full">
+                <Cpu className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Linha de Montagem</CardTitle>
+                <CardDescription className="text-xs">Agentes em rascunho prontos para montagem via Blackboard</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {defsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+              </div>
+            ) : defs.filter(d => d.status === "draft" || d.status === "assembling").length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-zinc-400 gap-2">
+                <CheckCircle className="w-10 h-10 opacity-30" />
+                <p className="text-sm">Nenhum agente em rascunho.</p>
+                <p className="text-xs">Crie agentes na aba Design e monte-os aqui.</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {defs.filter(d => d.status === "draft" || d.status === "assembling").map(def => {
+                  const taskStatus = assembleTaskStatus[def.id];
+                  return (
+                    <div key={def.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{def.name}</span>
+                          <Badge className={`text-[10px] px-1.5 py-0.5 text-white ${statusColor[def.status]}`}>
+                            {statusLabel[def.status]}
+                          </Badge>
+                          {def.status === "assembling" && (
+                            <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                          )}
+                        </div>
+                        {def.description && <p className="text-xs text-zinc-500 truncate mt-0.5">{def.description}</p>}
+                        {def.lastTaskId && (
+                          <p className="text-xs text-zinc-400 mt-0.5">
+                            Task #{def.lastTaskId}
+                            {taskStatus && ` — ${taskStatus}`}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        {def.status === "draft" && (
+                          <Button
+                            size="sm"
+                            onClick={() => assembleMutation.mutate(def.id)}
+                            disabled={assembleMutation.isPending}
+                            className="text-xs h-8"
+                          >
+                            {assembleMutation.isPending ? (
+                              <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                            ) : (
+                              <Zap className="w-3 h-3 mr-1" />
+                            )}
+                            Montar
+                          </Button>
+                        )}
+                        {def.status === "assembling" && (
+                          <span className="text-xs text-blue-500 flex items-center gap-1">
+                            <Loader2 className="w-3 h-3 animate-spin" /> Processando...
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* ---- TAB: DEPLOY ---- */}
+      <TabsContent value="deploy" className="space-y-4">
+        <Card>
+          <CardHeader className="border-b py-4 px-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 rounded-full">
+                <Rocket className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <CardTitle className="text-base">Orchestrate Center</CardTitle>
+                <CardDescription className="text-xs">Agentes prontos para deploy e implantados</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {defsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+              </div>
+            ) : defs.filter(d => d.status === "ready" || d.status === "deployed").length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-zinc-400 gap-2">
+                <Rocket className="w-10 h-10 opacity-30" />
+                <p className="text-sm">Nenhum agente pronto para deploy.</p>
+                <p className="text-xs">Monte um agente na aba Montar para vê-lo aqui.</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {defs.filter(d => d.status === "ready" || d.status === "deployed").map(def => (
+                  <div key={def.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-sm">{def.name}</span>
+                        <Badge className={`text-[10px] px-1.5 py-0.5 text-white ${statusColor[def.status]}`}>
+                          {statusLabel[def.status]}
+                        </Badge>
+                        <span className="text-[10px] text-zinc-400">v{def.version}</span>
+                      </div>
+                      {def.description && <p className="text-xs text-zinc-500 truncate mt-0.5">{def.description}</p>}
+                      {def.lastTaskId && (
+                        <p className="text-xs text-zinc-400 mt-0.5">Último artefato: Task #{def.lastTaskId}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      {def.status === "ready" && (
+                        <Button
+                          size="sm"
+                          onClick={() => deployMutation.mutate(def.id)}
+                          disabled={deployMutation.isPending}
+                          className="text-xs h-8 bg-purple-600 hover:bg-purple-700"
+                        >
+                          <Rocket className="w-3 h-3 mr-1" /> Deploy
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => redraftMutation.mutate(def.id)}
+                        disabled={redraftMutation.isPending}
+                        className="text-xs h-8"
+                      >
+                        <RotateCcw className="w-3 h-3 mr-1" /> Re-montar
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      {/* ---- TAB: GALERIA ---- */}
+      <TabsContent value="galeria" className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="relative flex-1 max-w-sm">
+            <Input
+              value={galFilter}
+              onChange={e => setGalFilter(e.target.value)}
+              placeholder="Buscar agentes..."
+              className="h-9 text-sm pl-8"
+            />
+            <FolderSearch className="w-4 h-4 absolute left-2.5 top-2.5 text-zinc-400" />
+          </div>
+          <p className="text-xs text-zinc-500">{galDefs.length} agente{galDefs.length !== 1 ? "s" : ""} implantado{galDefs.length !== 1 ? "s" : ""}</p>
+        </div>
+
+        {defsLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-zinc-400" />
+          </div>
+        ) : galDefs.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 text-zinc-400 gap-3">
+              <Brain className="w-12 h-12 opacity-30" />
+              <p className="text-sm font-medium">Nenhum agente implantado</p>
+              <p className="text-xs">Crie um agente na aba Design e faça o deploy para vê-lo aqui.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {galDefs.map(def => (
+              <Card key={def.id} className="flex flex-col hover:shadow-md transition-shadow">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <CardTitle className="text-sm truncate">{def.name}</CardTitle>
+                      {def.description && (
+                        <CardDescription className="text-xs mt-1 line-clamp-2">{def.description}</CardDescription>
+                      )}
+                    </div>
+                    <Badge className="text-[10px] px-1.5 py-0.5 text-white bg-purple-500 shrink-0">
+                      v{def.version}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 pb-4 mt-auto flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => runMutation.mutate(def.id)}
+                    disabled={runMutation.isPending}
+                    className="flex-1 text-xs h-8"
+                  >
+                    <Play className="w-3 h-3 mr-1" /> Executar
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => forkMutation.mutate(def.id)}
+                    disabled={forkMutation.isPending}
+                    className="text-xs h-8 px-3"
+                    title="Fork"
+                  >
+                    <GitBranch className="w-3 h-3" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </TabsContent>
+    </>
+  );
+}
+
+// ============================================================================
 
 const FILE_TO_ROUTE_MAP: Record<string, string> = {
   "Cockpit": "/",
@@ -1860,6 +2462,18 @@ export default function DevCenter() {
             <TabsTrigger value="history" data-testid="tab-history">
               <History className="w-4 h-4 mr-2" /> Histórico
             </TabsTrigger>
+            <TabsTrigger value="design" data-testid="tab-design">
+              <Layers className="w-4 h-4 mr-2" /> Design
+            </TabsTrigger>
+            <TabsTrigger value="assemble" data-testid="tab-assemble">
+              <Cpu className="w-4 h-4 mr-2" /> Montar
+            </TabsTrigger>
+            <TabsTrigger value="deploy" data-testid="tab-deploy">
+              <Rocket className="w-4 h-4 mr-2" /> Deploy
+            </TabsTrigger>
+            <TabsTrigger value="galeria" data-testid="tab-galeria">
+              <Brain className="w-4 h-4 mr-2" /> Galeria
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="develop" className="space-y-0">
@@ -2351,6 +2965,12 @@ export default function DevCenter() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* ================================================================
+              PHASE 6: FÁBRICA DE AGENTES
+              ================================================================ */}
+          <AgentFactoryTabs />
+
         </Tabs>
 
         {showCommitDialog && (
