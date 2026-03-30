@@ -16,7 +16,7 @@ import {
   Plus, Settings, Play, Zap, Layers, Puzzle, Palette,
   Terminal, Box, Workflow, PanelLeft, Table2, FormInput,
   ListChecks, PieChart, LineChart, Gauge, Bot, Code, Trash2, Save,
-  Sparkles, Rocket, PenTool
+  Sparkles, Rocket, PenTool, Brain
 } from "lucide-react";
 import { useLocation } from "wouter";
 
