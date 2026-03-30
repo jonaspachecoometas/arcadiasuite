@@ -28,8 +28,9 @@ import DevAgent from "@/components/lowcode/DevAgent";
 import OpenClawPanel from "@/components/OpenClawPanel";
 import AutomationCenter from "./AutomationCenter";
 import DevCenter from "./DevCenter";
+import { MiroFlowControl } from "@/components/MiroFlowControl";
 
-type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent" | "openclaw" | "automationcenter" | "designstudio";
+type ActiveTool = "home" | "doctypes" | "pages" | "workflows" | "dashboards" | "reports" | "scripts" | "ide" | "agent" | "openclaw" | "automationcenter" | "designstudio" | "miroflow";
 
 interface Dashboard {
   id: number;
@@ -288,6 +289,15 @@ export default function DevelopmentModule() {
       color: "bg-purple-600",
       count: 0,
       category: "dev"
+    },
+    {
+      id: "miroflow" as ActiveTool,
+      name: "MiroFlow",
+      description: "Análises científicas e estatísticas",
+      icon: Brain,
+      color: "bg-cyan-500",
+      count: 0,
+      category: "scientific"
     },
   ];
 
@@ -738,6 +748,7 @@ export default function DevelopmentModule() {
         {activeTool === "openclaw" && <OpenClawPanel />}
         {activeTool === "automationcenter" && <AutomationCenter />}
         {activeTool === "designstudio" && <DevCenter />}
+        {activeTool === "miroflow" && <MiroFlowControl />}
       </div>
 
       <Dialog open={showNewDashboardDialog} onOpenChange={setShowNewDashboardDialog}>
