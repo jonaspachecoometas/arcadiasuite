@@ -1,0 +1,9 @@
+{
+  "workflow": {
+    "research": false,
+    "plan_check": false,
+    "verifier": false,
+    "nyquist_validation": false
+  },
+  "model_profile": "budget"
+}
