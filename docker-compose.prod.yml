@@ -478,8 +478,6 @@ services:
       - ollama_models:/root/.ollama
     networks:
       - arcadia-internal
-    # Remova 'profiles: [ai]' para ativar por padrão no deploy
-    profiles: [ai]
 
   # ── Open WebUI (interface para Ollama + LLMFit) ───────────────────────────────
   open-webui:
@@ -539,7 +537,37 @@ services:
       - "traefik.http.routers.superset.tls=true"
       - "traefik.http.routers.superset.tls.certresolver=letsencrypt"
       - "traefik.http.services.superset.loadbalancer.server.port=8088"
-    profiles: [bi]
+
+  # ── MiroFlow (Cientistas via Ollama) ───────────────────────────────────────────
+  miroflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.miroflow
+    restart: always
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      MIROFLOW_PORT: 8006
+      MIROFLOW_RESEARCHER_MODEL: ${MIROFLOW_RESEARCHER_MODEL:-llama3.1:8b}
+    depends_on:
+      ollama:
+        condition: service_started
+    networks:
+      - arcadia-internal
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.miroflow.entrypoints=https"
+      - "traefik.http.routers.miroflow.rule=Host(`${MIROFLOW_DOMAIN:-miroflow.onboardbi.com.br}`)"
+      - "traefik.http.routers.miroflow.tls=true"
+      - "traefik.http.routers.miroflow.tls.certresolver=letsencrypt"
+      - "traefik.http.services.miroflow.loadbalancer.server.port=8006"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   arcadia-internal:
