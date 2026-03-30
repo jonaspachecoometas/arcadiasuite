@@ -202,7 +202,7 @@ router.post("/:id/run", async (req: Request, res: Response) => {
       task.id,
       "Executar agente",
       `Executar o agente conforme spec:\n\n${specContent}`,
-      "executor",
+      "run-executor",
       [],
       { phase: "execution", agentDefId: id }
     );

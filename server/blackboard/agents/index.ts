@@ -10,6 +10,7 @@ import { validatorAgent } from "./ValidatorAgent";
 import { executorAgent } from "./ExecutorAgent";
 import { evolutionAgent } from "./EvolutionAgent";
 import { researcherAgent } from "./ResearcherAgent";
+import { runExecutor } from "./RunExecutor";
 
 export const agents = {
   architect: architectAgent,
@@ -18,30 +19,33 @@ export const agents = {
   executor: executorAgent,
   evolution: evolutionAgent,
   researcher: researcherAgent,
+  "run-executor": runExecutor,
 };
 
 export function startAllAgents(): void {
   console.log("[Blackboard] Iniciando todos os agentes...");
-  
+
   architectAgent.start();
   generatorAgent.start();
   validatorAgent.start();
   executorAgent.start();
   evolutionAgent.start();
   researcherAgent.start();
-  
-  console.log("[Blackboard] Todos os 6 agentes estão ativos");
+  runExecutor.start();
+
+  console.log("[Blackboard] Todos os 7 agentes estão ativos");
 }
 
 export function stopAllAgents(): void {
   console.log("[Blackboard] Parando todos os agentes...");
-  
+
   architectAgent.stop();
   generatorAgent.stop();
   validatorAgent.stop();
   executorAgent.stop();
   evolutionAgent.stop();
   researcherAgent.stop();
+  runExecutor.stop();
 }
 
 export function getAgentsStatus(): Array<{ name: string; running: boolean; capabilities: string[] }> {
@@ -52,7 +56,8 @@ export function getAgentsStatus(): Array<{ name: string; running: boolean; capab
     executorAgent.getStatus(),
     evolutionAgent.getStatus(),
     researcherAgent.getStatus(),
+    runExecutor.getStatus(),
   ];
 }
 
-export { architectAgent, generatorAgent, validatorAgent, executorAgent, evolutionAgent, researcherAgent };
+export { architectAgent, generatorAgent, validatorAgent, executorAgent, evolutionAgent, researcherAgent, runExecutor };
