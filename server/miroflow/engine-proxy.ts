@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import crypto from "crypto";
-import { createNode } from "../graph/service";
+// import { createNode } from "../graph/service";  // TODO: debug - comentado temporariamente
 
 const MIROFLOW_HOST = process.env.MIROFLOW_HOST || "localhost";
 const MIROFLOW_PORT = parseInt(process.env.MIROFLOW_PORT || "8006", 10);
@@ -34,6 +34,8 @@ async function proxyToMiroFlow(path: string, method: string = "GET", body?: obje
 
 async function registerExecutionInKG(req: Request, execData: any, inputBody: any): Promise<void> {
   try {
+    // TODO: debug - createNode comentado temporariamente
+    /*
     const auditHash = crypto
       .createHash("sha256")
       .update(JSON.stringify({
@@ -45,17 +47,18 @@ async function registerExecutionInKG(req: Request, execData: any, inputBody: any
       }))
       .digest("hex");
 
-    await createNode({
-      type: "miroflow_execution",
-      tenantId: (req.user as any)?.tenantId ?? null,
-      data: {
-        ...execData,
-        input: inputBody,
-        auditHash,
-        immutable: true,
-        registeredAt: new Date().toISOString(),
-      },
-    });
+    // await createNode({
+    //   type: "miroflow_execution",
+    //   tenantId: (req.user as any)?.tenantId ?? null,
+    //   data: {
+    //     ...execData,
+    //     input: inputBody,
+    //     auditHash,
+    //     immutable: true,
+    //     registeredAt: new Date().toISOString(),
+    //   },
+    // });
+    */
   } catch (kgErr: any) {
     // KG failure não deve bloquear a resposta ao cliente
     console.error("[MiroFlow] Falha ao registrar no KG:", kgErr.message);
