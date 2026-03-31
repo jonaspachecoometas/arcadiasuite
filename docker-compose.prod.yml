@@ -67,6 +67,9 @@ services:
       PLUS_PORT: "8080"
       PLUS_AUTO_START: "false"   # container separado em prod
       SSO_PLUS_BASE_URL: http://plus:8080
+      # ── MiroFlow ──────────────────────────────────────────────────────────
+      MIROFLOW_HOST: miroflow
+      MIROFLOW_PORT: "8006"
       # ── Apache Superset ───────────────────────────────────────────────────
       SUPERSET_HOST: superset
       SUPERSET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
