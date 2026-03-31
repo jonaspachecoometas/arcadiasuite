@@ -1,0 +1,62 @@
+# ─── Arcádia — Infraestrutura Compartilhada ─────────────────────────────────
+# Serviços base: db, redis, ollama
+# Usado por: superset, miroflow, app, etc.
+
+name: arcadia-shared
+
+services:
+
+  # ── Banco de dados com pgvector ─────────────────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    restart: always
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-arcadia}
+      POSTGRES_USER: ${PGUSER:-arcadia}
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-pgvector.sql:/docker-entrypoint-initdb.d/01-pgvector.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-arcadia}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - arcadia-internal
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - arcadia-internal
+
+  # ── Ollama (LLMs locais — soberania total) ────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    restart: always
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - arcadia-internal
+      - coolify
+
+networks:
+  arcadia-internal:
+    driver: bridge
+    name: arcadia-internal
+  coolify:
+    external: true
+
+volumes:
+  pgdata:
+    external: true
+    name: arcadia-prod_pgdata
+  redis_data:
+    external: true
+    name: arcadia-prod_redis_data
+  ollama_models:

@@ -1,0 +1,42 @@
+# ─── MiroFlow — Aplicação Coolify ─────────────────────────────────────────────
+# Conecta aos serviços compartilhados (ollama) via network arcadia-internal
+# Requer: docker-compose.shared.yml rodando
+
+name: arcadia-miroflow
+
+services:
+
+  # ── MiroFlow (Cientistas via Ollama) ───────────────────────────────────────────
+  miroflow:
+    build:
+      context: .
+      dockerfile: Dockerfile.miroflow
+    restart: always
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      MIROFLOW_PORT: 8006
+      MIROFLOW_RESEARCHER_MODEL: ${MIROFLOW_RESEARCHER_MODEL:-llama3.1:8b}
+    networks:
+      - arcadia-internal
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.miroflow.entrypoints=https"
+      - "traefik.http.routers.miroflow.rule=Host(`${MIROFLOW_DOMAIN:-miroflow.onboardbi.com.br}`)"
+      - "traefik.http.routers.miroflow.tls=true"
+      - "traefik.http.routers.miroflow.tls.certresolver=letsencrypt"
+      - "traefik.http.services.miroflow.loadbalancer.server.port=8006"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  arcadia-internal:
+    external: true
+    name: arcadia-internal
+  coolify:
+    external: true

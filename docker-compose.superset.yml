@@ -1,0 +1,49 @@
+# ─── Superset BI — Aplicação Coolify ───────────────────────────────────────
+# Conecta aos serviços compartilhados (db, redis) via network arcadia-internal
+# Requer: docker-compose.shared.yml rodando
+
+name: arcadia-superset
+
+services:
+
+  # ── Superset BI ───────────────────────────────────────────────────────────────
+  superset:
+    image: arcadia-prod-superset:latest
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/superset
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY}
+      SQLALCHEMY_DATABASE_URI: postgresql://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/superset
+      PYTHONPATH: /app/pythonpath
+      SUPERSET_ADMIN_USERNAME: ${SUPERSET_ADMIN_USERNAME:-admin}
+      SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD}
+      SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@onboardbi.com.br}
+      ARCADIA_DATABASE_URL: postgresql+psycopg2://${PGUSER:-arcadia}:${PGPASSWORD}@db:5432/${PGDATABASE:-arcadia}
+    command: ["/bin/bash", "/app/docker/init.sh"]
+    volumes:
+      - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./docker/superset/init.sh:/app/docker/init.sh:ro
+      - superset_home:/app/superset_home
+    networks:
+      - arcadia-internal
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.superset.entrypoints=https"
+      - "traefik.http.routers.superset.rule=Host(`${SUPERSET_DOMAIN:-bi.onboardbi.com.br}`)"
+      - "traefik.http.routers.superset.tls=true"
+      - "traefik.http.routers.superset.tls.certresolver=letsencrypt"
+      - "traefik.http.services.superset.loadbalancer.server.port=8088"
+
+networks:
+  arcadia-internal:
+    external: true
+    name: arcadia-internal
+  coolify:
+    external: true
+
+volumes:
+  superset_home:
+    external: true
+    name: arcadia-prod_superset_home
