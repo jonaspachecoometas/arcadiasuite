@@ -1,4 +1,5 @@
 import { BrowserFrame } from "@/components/Browser/BrowserFrame";
+import { MiroFlowControl } from "@/components/MiroFlowControl";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -199,6 +200,10 @@ export default function Scientist() {
               <TabsTrigger value="suggestions" className="data-[state=active]:bg-purple-500">
                 <Lightbulb className="w-4 h-4 mr-2" />
                 Sugestões
+              </TabsTrigger>
+              <TabsTrigger value="scientific" className="data-[state=active]:bg-cyan-500">
+                <Brain className="w-4 h-4 mr-2" />
+                Científico
               </TabsTrigger>
             </TabsList>
 
@@ -826,6 +831,10 @@ export default function Scientist() {
                   </CardContent>
                 </Card>
               )}
+            </TabsContent>
+
+            <TabsContent value="scientific" className="space-y-4">
+              <MiroFlowControl />
             </TabsContent>
           </Tabs>
         </div>
