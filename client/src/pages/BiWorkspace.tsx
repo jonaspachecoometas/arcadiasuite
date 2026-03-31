@@ -50,6 +50,7 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { SupersetDashboard } from "@/components/SupersetDashboard";
+import { MiroFlowControl } from "@/components/MiroFlowControl";
 import {
   Dialog,
   DialogContent,
@@ -2957,6 +2958,9 @@ export default function BiWorkspace() {
               <TabsTrigger value="staging" className="data-[state=active]:bg-[#c89b3c] data-[state=active]:text-[#1f334d] text-white/70">
                 <Layers className="w-4 h-4 mr-2" /> Staging
               </TabsTrigger>
+              <TabsTrigger value="cientifico" className="data-[state=active]:bg-[#c89b3c] data-[state=active]:text-[#1f334d] text-white/70">
+                Científico
+              </TabsTrigger>
               <TabsTrigger value="advanced" className="data-[state=active]:bg-[#c89b3c] data-[state=active]:text-[#1f334d] text-white/70">
                 <Settings className="w-4 h-4 mr-2" /> Insights
               </TabsTrigger>
@@ -2982,6 +2986,9 @@ export default function BiWorkspace() {
             </TabsContent>
             <TabsContent value="staging" className="mt-0">
               <StagingTab />
+            </TabsContent>
+            <TabsContent value="cientifico" className="mt-0">
+              <MiroFlowControl />
             </TabsContent>
             <TabsContent value="advanced" className="mt-0">
               <SupersetAdvancedTab />

@@ -3,7 +3,7 @@
 # Executado ao iniciar o container
 set -e
 
-SUPERSET_ADMIN_USER="${SUPERSET_ADMIN_USER:-admin}"
+SUPERSET_ADMIN_USER="${SUPERSET_ADMIN_USERNAME:-${SUPERSET_ADMIN_USER:-admin}}"
 SUPERSET_ADMIN_EMAIL="${SUPERSET_ADMIN_EMAIL:-admin@arcadia.app}"
 SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD:-arcadia2026}"
 ARCADIA_DB_URL="${ARCADIA_DATABASE_URL:-postgresql://arcadia:arcadia123@db:5432/arcadia}"
@@ -12,7 +12,7 @@ echo "[Superset Init] Aguardando PostgreSQL..."
 until python -c "
 import psycopg2, os, sys
 try:
-    url = os.environ.get('DATABASE_URL', 'postgresql://arcadia:arcadia123@db:5432/arcadia_superset')
+    url = os.environ.get('SQLALCHEMY_DATABASE_URI', os.environ.get('DATABASE_URL', 'postgresql://arcadia:arcadia123@db:5432/arcadia_superset'))
     psycopg2.connect(url)
     sys.exit(0)
 except: sys.exit(1)
