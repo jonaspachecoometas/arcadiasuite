@@ -73,6 +73,26 @@ export function MiroFlowControl({
     },
   });
 
+  const createDashboardMutation = useMutation({
+    mutationFn: async (dashboardData: {
+      dashboardTitle: string;
+      sqlQuery: string;
+    }) => {
+      const response = await apiRequest(
+        "POST",
+        "/api/superset/miroflow/create-dashboard",
+        {
+          ...dashboardData,
+          analysisId: mutation.data?.execution_id,
+          agent: selectedAgent,
+          task,
+          insights: mutation.data?.result,
+        }
+      );
+      return response.json();
+    },
+  });
+
   const handleAnalyze = () => {
     if (!task.trim()) {
       return;
@@ -206,6 +226,46 @@ export function MiroFlowControl({
                     <span className="font-semibold text-[#c89b3c]">ID:</span>{" "}
                     {mutation.data?.execution_id?.slice(0, 8)}...
                   </div>
+                </div>
+
+                {/* Create Dashboard Button */}
+                <div className="pt-4 border-t border-[#c89b3c]/20">
+                  <Button
+                    onClick={() => {
+                      const title = `Análise ${selectedAgent} - ${new Date().toLocaleDateString('pt-BR')}`;
+                      createDashboardMutation.mutate({
+                        dashboardTitle: title,
+                        sqlQuery: `SELECT * FROM arcadia LIMIT 100`, // Placeholder - idealmente vem do MiroFlow
+                      });
+                    }}
+                    disabled={createDashboardMutation.isPending}
+                    className="w-full bg-[#8b7355] hover:bg-[#9d8568] text-white font-semibold"
+                  >
+                    {createDashboardMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Criando Dashboard...
+                      </>
+                    ) : (
+                      "📊 Criar Dashboard no Superset"
+                    )}
+                  </Button>
+
+                  {createDashboardMutation.isSuccess && (
+                    <div className="mt-2 rounded-lg p-3 bg-green-900/20 border border-green-500/50">
+                      <p className="text-xs text-green-100">
+                        ✅ Dashboard criado! Atualizando...
+                      </p>
+                    </div>
+                  )}
+
+                  {createDashboardMutation.isError && (
+                    <div className="mt-2 rounded-lg p-3 bg-red-900/20 border border-red-500/50">
+                      <p className="text-xs text-red-100">
+                        ❌ Erro: {createDashboardMutation.error instanceof Error ? createDashboardMutation.error.message : "Erro ao criar dashboard"}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
