@@ -73,9 +73,10 @@ export function registerMiroFlowRoutes(app: Express): void {
   });
 
   app.post("/api/miroflow/analyze", async (req: Request, res: Response) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ error: "Não autenticado" });
-    }
+    // TODO: autenticação
+    // if (!req.isAuthenticated()) {
+    //   return res.status(401).json({ error: "Não autenticado" });
+    // }
     try {
       const inputBody = {
         ...req.body,
