@@ -33,14 +33,14 @@ const AGENTS = [
   {
     value: "statistician",
     label: "Statistician",
-    model: "deepseek-r1:14b",
+    model: "llama3.1:8b",
     placeholder:
       "Ex: Analise a distribuição de vendas por região no último trimestre",
   },
   {
     value: "fiscal_auditor",
     label: "Fiscal Auditor",
-    model: "deepseek-r1:14b",
+    model: "llama3.1:8b",
     placeholder:
       "Ex: Verifique inconsistências nos registros NFe do CNPJ 12.345.678/0001-90",
   },
