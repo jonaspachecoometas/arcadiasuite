@@ -1,12 +1,10 @@
 import type { Express, Request, Response } from "express";
-import crypto from "crypto";
-// import { createNode } from "../graph/service";  // TODO: debug - comentado temporariamente
 
 const MIROFLOW_HOST = process.env.MIROFLOW_HOST || "localhost";
 const MIROFLOW_PORT = parseInt(process.env.MIROFLOW_PORT || "8006", 10);
 const MIROFLOW_URL = `http://${MIROFLOW_HOST}:${MIROFLOW_PORT}`;
-const MIROFLOW_TIMEOUT = 600_000; // 10 minutos — deepseek-r1:14b pode levar 120-300s
-const MIROFLOW_HEALTH_TIMEOUT = 5_000; // 5 segundos para health check
+const MIROFLOW_TIMEOUT = 600_000; // 10 minutos
+const MIROFLOW_HEALTH_TIMEOUT = 5_000;
 
 async function proxyToMiroFlow(path: string, method: string = "GET", body?: object): Promise<any> {
   const timeoutMs = path === "/health" ? MIROFLOW_HEALTH_TIMEOUT : MIROFLOW_TIMEOUT;
@@ -32,39 +30,6 @@ async function proxyToMiroFlow(path: string, method: string = "GET", body?: obje
   }
 }
 
-async function registerExecutionInKG(req: Request, execData: any, inputBody: any): Promise<void> {
-  try {
-    // TODO: debug - createNode comentado temporariamente
-    /*
-    const auditHash = crypto
-      .createHash("sha256")
-      .update(JSON.stringify({
-        execution_id: execData.execution_id,
-        agent: execData.agent,
-        model: execData.model,
-        input: inputBody,
-        output: execData.result,
-      }))
-      .digest("hex");
-
-    // await createNode({
-    //   type: "miroflow_execution",
-    //   tenantId: (req.user as any)?.tenantId ?? null,
-    //   data: {
-    //     ...execData,
-    //     input: inputBody,
-    //     auditHash,
-    //     immutable: true,
-    //     registeredAt: new Date().toISOString(),
-    //   },
-    // });
-    */
-  } catch (kgErr: any) {
-    // KG failure não deve bloquear a resposta ao cliente
-    console.error("[MiroFlow] Falha ao registrar no KG:", kgErr.message);
-  }
-}
-
 export function registerMiroFlowRoutes(app: Express): void {
   app.get("/api/miroflow/health", async (_req: Request, res: Response) => {
     try {
@@ -77,24 +42,15 @@ export function registerMiroFlowRoutes(app: Express): void {
 
   app.post("/api/miroflow/analyze", async (req: Request, res: Response) => {
     console.log("[MiroFlow] POST /api/miroflow/analyze - começando");
-    // TODO: autenticação
-    // if (!req.isAuthenticated()) {
-    //   return res.status(401).json({ error: "Não autenticado" });
-    // }
     try {
-      console.log("[MiroFlow] request body:", req.body);
       const inputBody = {
         ...req.body,
         tenant_id: (req.user as any)?.tenantId ?? null,
       };
-      console.log("[MiroFlow] calling proxyToMiroFlow");
       const data = await proxyToMiroFlow("/analyze", "POST", inputBody);
-      console.log("[MiroFlow] proxyToMiroFlow respondeu");
-      // Registrar no KG de forma assíncrona (não bloqueia a resposta)
-      registerExecutionInKG(req, data, req.body).catch(() => {});
       res.json(data);
     } catch (err: any) {
-      console.error("[MiroFlow] erro:", err.message, err.stack);
+      console.error("[MiroFlow] erro:", err.message);
       res.status(502).json({ error: err.message });
     }
   });
