@@ -9,14 +9,15 @@ SUPERSET_ADMIN_PASSWORD="${SUPERSET_ADMIN_PASSWORD:-arcadia2026}"
 ARCADIA_DB_URL="${ARCADIA_DATABASE_URL:-postgresql://arcadia:arcadia123@db:5432/arcadia}"
 
 echo "[Superset Init] Aguardando PostgreSQL..."
-until python -c "
+cat > /tmp/pgcheck.py << 'EOF'
 import psycopg2, os, sys
+url = os.environ.get('SQLALCHEMY_DATABASE_URI', 'postgresql://arcadia:arcadia123@db:5432/superset')
 try:
-    url = os.environ.get('SQLALCHEMY_DATABASE_URI', os.environ.get('DATABASE_URL', 'postgresql://arcadia:arcadia123@db:5432/arcadia_superset'))
     psycopg2.connect(url)
-    sys.exit(0)
-except: sys.exit(1)
-" 2>/dev/null; do
+except Exception:
+    sys.exit(1)
+EOF
+until python /tmp/pgcheck.py 2>/dev/null; do
   sleep 2
 done
 echo "[Superset Init] PostgreSQL disponível!"

@@ -9,8 +9,8 @@ SECRET_KEY = os.environ.get("SUPERSET_SECRET_KEY", "change-in-production-use-ope
 
 # ── Banco de metadados do Superset ────────────────────────────────────────────
 SQLALCHEMY_DATABASE_URI = os.environ.get(
-    "DATABASE_URL",
-    "postgresql://arcadia:arcadia123@db:5432/arcadia_superset"
+    "SQLALCHEMY_DATABASE_URI",
+    os.environ.get("DATABASE_URL", "postgresql://arcadia:arcadia123@db:5432/superset")
 )
 
 # ── CORS — permite o gateway Arcádia (:5000) chamar a API ────────────────────
