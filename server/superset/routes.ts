@@ -267,19 +267,9 @@ export function registerSupersetRoutes(app: Express): void {
         throw new Error("Falha ao adicionar chart ao dashboard");
       }
 
-      // 5. Salvar referência no banco Arcádia (skip se não conseguir)
-      try {
-        const { db } = await import("../../db/index.js");
-        await db.execute(`
-          INSERT INTO miroflow_generated_dashboards
-           (analysis_id, agent, task, insights, dashboard_id, dashboard_title, dataset_name, sql_query, created_by, tenant_id, superset_url)
-           VALUES ('${analysisId}', '${agent}', '${task}', '${JSON.stringify(insights || {}).replace(/'/g, "''")}', ${dashboardId}, '${dashboardTitle.replace(/'/g, "''")}', 'miroflow_${analysisId.substring(0, 8)}', '${sqlQuery.replace(/'/g, "''")}', '${user.id}', ${user.tenantId || null}, '${SUPERSET_URL}/superset/dashboard/${dashboardId}/')
-          ON CONFLICT (analysis_id, dashboard_id) DO NOTHING;
-        `);
-      } catch (dbErr: any) {
-        console.warn("[Superset] Aviso ao salvar referência do dashboard:", dbErr.message);
-        // Não bloqueia - dashboard foi criado mesmo com erro de registro
-      }
+      // 5. Salvar referência no banco Arcádia (TODO: implementar com prepared statements)
+      // Por enquanto apenas retorna dashboard criado
+      console.log(`[Superset] Dashboard criado: ID=${dashboardId}, título="${dashboardTitle}"`);
 
       res.json({
         success: true,
