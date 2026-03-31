@@ -73,20 +73,25 @@ export function registerMiroFlowRoutes(app: Express): void {
   });
 
   app.post("/api/miroflow/analyze", async (req: Request, res: Response) => {
+    console.log("[MiroFlow] POST /api/miroflow/analyze - começando");
     // TODO: autenticação
     // if (!req.isAuthenticated()) {
     //   return res.status(401).json({ error: "Não autenticado" });
     // }
     try {
+      console.log("[MiroFlow] request body:", req.body);
       const inputBody = {
         ...req.body,
         tenant_id: (req.user as any)?.tenantId ?? null,
       };
+      console.log("[MiroFlow] calling proxyToMiroFlow");
       const data = await proxyToMiroFlow("/analyze", "POST", inputBody);
+      console.log("[MiroFlow] proxyToMiroFlow respondeu");
       // Registrar no KG de forma assíncrona (não bloqueia a resposta)
       registerExecutionInKG(req, data, req.body).catch(() => {});
       res.json(data);
     } catch (err: any) {
+      console.error("[MiroFlow] erro:", err.message, err.stack);
       res.status(502).json({ error: err.message });
     }
   });
