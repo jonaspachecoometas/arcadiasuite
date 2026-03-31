@@ -5,7 +5,7 @@ import { createNode } from "../graph/service";
 const MIROFLOW_HOST = process.env.MIROFLOW_HOST || "localhost";
 const MIROFLOW_PORT = parseInt(process.env.MIROFLOW_PORT || "8006", 10);
 const MIROFLOW_URL = `http://${MIROFLOW_HOST}:${MIROFLOW_PORT}`;
-const MIROFLOW_TIMEOUT = 300_000; // 5 minutos — deepseek-r1:14b pode levar 60-120s
+const MIROFLOW_TIMEOUT = 600_000; // 10 minutos — deepseek-r1:14b pode levar 120-300s
 const MIROFLOW_HEALTH_TIMEOUT = 5_000; // 5 segundos para health check
 
 async function proxyToMiroFlow(path: string, method: string = "GET", body?: object): Promise<any> {
@@ -27,7 +27,7 @@ async function proxyToMiroFlow(path: string, method: string = "GET", body?: obje
     return await response.json();
   } catch (err: any) {
     clearTimeout(timeout);
-    if (err.name === "AbortError") throw new Error("MiroFlow timeout (300s)");
+    if (err.name === "AbortError") throw new Error("MiroFlow timeout (600s)");
     throw err;
   }
 }
