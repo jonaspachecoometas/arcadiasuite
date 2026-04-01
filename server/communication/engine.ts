@@ -6,9 +6,26 @@ import ws from "ws";
 neonConfig.webSocketConstructor = ws;
 
 const app = express();
-const PORT = 8006;
+const PORT = process.env.PORT || 8006;
 
-app.use(cors());
+// CORREÇÃO: CORS restrito - whitelist de origens permitidas
+const allowedOrigins = [
+  'http://localhost:5000',
+  'https://localhost:5000',
+  process.env.FRONTEND_URL,
+  process.env.DOMAIN ? `https://${process.env.DOMAIN}` : null,
+].filter(Boolean);
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS não permitido'));
+    }
+  },
+  credentials: true
+}));
 app.use(express.json());
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

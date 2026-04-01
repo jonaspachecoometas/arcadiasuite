@@ -182,11 +182,22 @@ export async function registerRoutes(
   // Arcádia Plus - SSO routes (proxy already registered at top)
   app.use("/api/plus/sso", plusSsoRoutes);
 
+  // CORREÇÃO: /api/tenants protegido - apenas admin vê todos
   app.get("/api/tenants", async (req: any, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ error: "Authentication required" });
     }
     try {
+      // Se não for admin, retornar apenas o tenant do usuário
+      if (req.user?.role !== 'admin') {
+        if (req.user?.tenantId) {
+          const tenant = await storage.getTenant(req.user.tenantId);
+          return res.json(tenant ? [tenant] : []);
+        }
+        return res.status(403).json({ error: "Access denied" });
+      }
+      
+      // Admin vê todos
       const tenants = await storage.getTenants();
       res.json(tenants);
     } catch (error) {

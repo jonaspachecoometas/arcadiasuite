@@ -15,7 +15,7 @@ export interface IStorage {
   sessionStore: session.Store;
   
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByUsername(username: string, tenantId?: number): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getEnrichedUser(user: User): Promise<any>;
   
@@ -28,6 +28,7 @@ export interface IStorage {
   getUserApplications(userId: string): Promise<Application[]>;
   assignApplicationToUser(userId: string, applicationId: string): Promise<void>;
   removeApplicationFromUser(userId: string, applicationId: string): Promise<void>;
+  getTenant(id: number): Promise<{ id: number; name: string; slug: string; tenantType?: string; plan?: string; status?: string } | undefined>;
   getTenants(): Promise<{ id: number; name: string; slug: string }[]>;
 }
 
@@ -46,8 +47,21 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
+  // CORREÇÃO: getUserByUsername com validação de tenant
+  async getUserByUsername(username: string, tenantId?: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
+    
+    // Se tenantId foi passado, validar que usuário pertence a esse tenant
+    if (tenantId && user) {
+      const [tenantUser] = await db.select()
+        .from(tenantUsers)
+        .where(and(
+          eq(tenantUsers.userId, user.id),
+          eq(tenantUsers.tenantId, tenantId)
+        ));
+      if (!tenantUser) return undefined;
+    }
+    
     return user;
   }
 
@@ -144,6 +158,19 @@ export class DatabaseStorage implements IStorage {
     }
     
     return enriched;
+  }
+
+  // CORREÇÃO: getTenant para buscar tenant específico
+  async getTenant(id: number): Promise<{ id: number; name: string; slug: string; tenantType?: string; plan?: string; status?: string } | undefined> {
+    const [tenant] = await db.select({ 
+      id: tenants.id, 
+      name: tenants.name, 
+      slug: tenants.slug,
+      tenantType: tenants.tenantType,
+      plan: tenants.plan,
+      status: tenants.status
+    }).from(tenants).where(eq(tenants.id, id));
+    return tenant;
   }
 
   async getTenants(): Promise<{ id: number; name: string; slug: string }[]> {

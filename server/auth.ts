@@ -30,12 +30,14 @@ async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
-if (!process.env.SESSION_SECRET) {
-  console.warn("[auth] WARNING: SESSION_SECRET env var not set. Using insecure fallback. Set SESSION_SECRET in production.");
-}
+// CORREÇÃO: Session secret seguro - obrigatório em produção
+const SESSION_SECRET = process.env.SESSION_SECRET || 
+  (process.env.NODE_ENV === 'production' 
+    ? (() => { throw new Error('SESSION_SECRET obrigatório em produção'); })()
+    : randomBytes(32).toString('hex'));
 
 const sessionSettings: session.SessionOptions = {
-  secret: process.env.SESSION_SECRET || `arcadia-dev-${Math.random().toString(36)}`,
+  secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   store: storage.sessionStore,
