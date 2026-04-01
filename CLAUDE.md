@@ -20,7 +20,7 @@ server/
 client/                   # 66 páginas React
 shared/schema.ts          # Schema do banco (7317 linhas, Drizzle ORM)
 docker/
-  litellm-config.yaml     # Roteamento de LLMs (TIER 1: LLMFit, TIER 2: Ollama, TIER 3: externos)
+  litellm-config.yaml     # Roteamento de LLMs (TIER 1: Ollama local, TIER 2: externos)
 ```
 
 ## Arquitetura de IA
@@ -29,9 +29,8 @@ Manus / Agents / Embeddings
         │  AI_INTEGRATIONS_OPENAI_BASE_URL
         ▼
    LiteLLM :4000  (gateway unificado, loga tudo no banco)
-        ├──► LLMFit (TIER 1 — fine-tuned, soberano) [slot pronto, comentado]
-        ├──► Ollama :11434 (TIER 2 — local, padrão)
-        └──► OpenAI/Anthropic/Groq (TIER 3 — opt-in, só se API key configurada)
+        ├──► Ollama :11434 (TIER 1 — local, padrão)
+        └──► OpenAI/Anthropic/Groq (TIER 2 — opt-in, só se API key configurada)
 ```
 
 **Variáveis chave do Manus:**
@@ -96,11 +95,11 @@ arcadia-prod-{contabil,bi,automation,fisco,embeddings}-1  Python services
 - ✅ Docker dev + prod, LiteLLM gateway
 
 ## O que ainda falta
-- ❌ LLMFit: slot pronto em `litellm-config.yaml`, só habilitar quando disponível
 - ❌ Testes automatizados / CI-CD
 - ❌ Monitoramento (APM, Sentry, métricas)
 - ❌ Multi-tenancy completo
 - ❌ Rate limiting em todos os endpoints (parcial)
+- ❌ Fine-tuning de modelos locais (dados do Arcádia)
 
 ## Comandos úteis
 ```bash
@@ -122,7 +121,6 @@ npm run build
 ```
 SESSION_SECRET, SSO_SECRET          # gerar strings seguras em prod
 AI_INTEGRATIONS_OPENAI_BASE_URL     # aponta para LiteLLM
-LLMFIT_BASE_URL                     # LLMFit quando disponível
 OLLAMA_BASE_URL                     # Ollama host ou container
 OPENAI_API_KEY                      # opcional (soberania: deixar vazio)
 ```

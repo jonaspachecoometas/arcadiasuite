@@ -122,7 +122,6 @@ AUTOMATION_PYTHON_URL=http://automation:8005
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 GROQ_API_KEY=
-LLMFIT_BASE_URL=    # habilitar quando LLMFit estiver disponível
 ```
 
 ### Superset — profile `bi`
@@ -256,12 +255,11 @@ Configure backups automáticos no Coolify em **Project → Backups**.
 
 ## Stack de IA (LiteLLM + Ollama)
 
-### Três tiers configurados em `docker/litellm-config.yaml`
+### Dois tiers configurados em `docker/litellm-config.yaml`
 
 ```
-TIER 1 — LLMFit (fine-tuned, soberano)   → slot pronto, habilitar via LLMFIT_BASE_URL
-TIER 2 — Ollama (local, padrão)           → llama3.3, qwen2.5-coder, nomic-embed-text
-TIER 3 — Externos (opt-in)               → OpenAI, Anthropic, Groq (apenas se API key definida)
+TIER 1 — Ollama (local, padrão)           → llama3.3, qwen2.5-coder, nomic-embed-text
+TIER 2 — Externos (opt-in)               → OpenAI, Anthropic, Groq (apenas se API key definida)
 ```
 
 ### Baixar modelos Ollama após o primeiro deploy
@@ -271,12 +269,6 @@ docker exec arcadia-ollama ollama pull llama3.3
 docker exec arcadia-ollama ollama pull qwen2.5-coder:7b
 docker exec arcadia-ollama ollama pull nomic-embed-text
 ```
-
-### Habilitar LLMFit (quando disponível)
-
-1. Defina `LLMFIT_BASE_URL=http://seu-llmfit:porta`
-2. Descomente o bloco TIER 1 em `docker/litellm-config.yaml`
-3. Redeploy do serviço `litellm`
 
 ---
 

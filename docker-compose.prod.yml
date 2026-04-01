@@ -283,7 +283,7 @@ services:
       - arcadia-internal
 
   # ── LiteLLM (gateway unificado de LLM — soberania dos dados) ─────────────────
-  # Roteia: LLMFit (fine-tuned) → Ollama (local) → externo (opt-in)
+  # Roteia: Ollama (local) → externo (opt-in)
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     restart: always
@@ -297,9 +297,6 @@ services:
       # Ollama: se instalado no host use http://host-gateway:11434
       # Se usar container Docker, mantém http://ollama:11434
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      # LLMFit: URL do serviço de modelos fine-tuned
-      LLMFIT_BASE_URL: ${LLMFIT_BASE_URL:-}
-      LLMFIT_API_KEY: ${LLMFIT_API_KEY:-}
       # Providers externos opcionais (soberania: só habilitados se configurados)
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
@@ -322,7 +319,7 @@ services:
     networks:
       - arcadia-internal
 
-  # ── Open WebUI (interface para Ollama + LLMFit) ───────────────────────────────
+  # ── Open WebUI (interface para Ollama) ───────────────────────────────
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     restart: always
