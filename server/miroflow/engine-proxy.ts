@@ -7,7 +7,7 @@ const MIROFLOW_URL = `http://${MIROFLOW_HOST}:${MIROFLOW_PORT}`;
 const MIROFLOW_TIMEOUT = 600_000; // 10 minutos
 const MIROFLOW_HEALTH_TIMEOUT = 5_000;
 
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_URL = process.env.OLLAMA_BASE_URL || "http://ollama-ia1upsekrad96at5hq97e4qa:11434";
 
 const AGENT_CONFIGS: Record<string, { model: string; system: string }> = {
   statistician: {
@@ -35,7 +35,7 @@ const AGENT_CONFIGS: Record<string, { model: string; system: string }> = {
 
 const FALLBACK_MODEL = "llama3.2:3b";
 
-async function callOllama(model: string, system: string, prompt: string): Promise<string> {
+async function callLLM(model: string, system: string, prompt: string): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 300_000);
   try {
@@ -53,7 +53,10 @@ async function callOllama(model: string, system: string, prompt: string): Promis
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    if (!resp.ok) throw new Error(`Ollama error: ${resp.status}`);
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: resp.statusText }));
+      throw new Error(err?.error ?? `Ollama error: ${resp.status}`);
+    }
     const data: any = await resp.json();
     return data.message?.content ?? "";
   } catch (err: any) {
@@ -126,10 +129,10 @@ export function registerMiroFlowRoutes(app: Express): void {
       let result: string;
 
       try {
-        result = await callOllama(model, cfg.system, prompt);
+        result = await callLLM(model, cfg.system, prompt);
       } catch {
         model = FALLBACK_MODEL;
-        result = await callOllama(model, cfg.system, prompt);
+        result = await callLLM(model, cfg.system, prompt);
       }
 
       res.json({
