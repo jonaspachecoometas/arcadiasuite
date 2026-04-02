@@ -105,8 +105,15 @@ export class DashboardServer {
     this.app.use('/api/kernel', kernelRoutes);
 
     // Serve dashboard HTML
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = dirname(__filename);
+    // Suporte a ESM e CommonJS (build do Docker)
+    const __dirname = (() => {
+      try {
+        return dirname(fileURLToPath(import.meta.url));
+      } catch {
+        // Fallback para CommonJS build
+        return join(process.cwd(), 'server', 'kernel', 'dashboard');
+      }
+    })();
     const publicPath = join(__dirname, 'public');
     
     this.app.get('/', (req: Request, res: Response) => {

@@ -12,8 +12,15 @@ import { LogAggregator } from './core/LogAggregator';
 import { DashboardServer } from './dashboard/DashboardServer';
 import { ServiceConfig, ServiceState } from './types';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Suporte a ESM e CommonJS (build do Docker)
+const __dirname = (() => {
+  try {
+    return dirname(fileURLToPath(import.meta.url));
+  } catch {
+    // Fallback para CommonJS build
+    return join(process.cwd(), 'server', 'kernel');
+  }
+})();
 
 export interface KernelOptions {
   configPath?: string;
@@ -200,14 +207,19 @@ export { createKernelRoutes } from './api/routes';
 export * from './types';
 
 // Entry point para execução direta
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const kernel = new ArcadiaKernel({
-    dashboard: { enabled: true, port: 5001 },
-    autoStart: true,
-  });
+// Protegido para funcionar no build CommonJS do Docker
+try {
+  if (import.meta.url && import.meta.url === `file://${process.argv[1]}`) {
+    const kernel = new ArcadiaKernel({
+      dashboard: { enabled: true, port: 5001 },
+      autoStart: true,
+    });
 
-  kernel.start().catch((error) => {
-    console.error('[Kernel] Falha ao iniciar:', error);
-    process.exit(1);
-  });
+    kernel.start().catch((error) => {
+      console.error('[Kernel] Falha ao iniciar:', error);
+      process.exit(1);
+    });
+  }
+} catch {
+  // No build CommonJS, o Kernel é iniciado pelo server/index.ts
 }
