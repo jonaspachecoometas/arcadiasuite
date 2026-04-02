@@ -197,30 +197,12 @@ services:
 
   # ─────────────── PERFIL: ai (Soberania de IA) ────────────────────────────────
 
-  # ── Ollama (LLMs locais) ─────────────────────────────────────────────────────
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    volumes:
-      - ollama_models:/root/.ollama
-    ports:
-      - "11434:11434"
-    profiles: [ai]
-    # Para GPU NVIDIA: adicione `deploy.resources.reservations.devices`
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-
   # ── Open WebUI (interface para devs/consultores) ─────────────────────────────
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     restart: unless-stopped
     environment:
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: http://ollama-ia1upsekrad96at5hq97e4qa:11434
       WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY:-webui-secret-change-in-prod}
       DEFAULT_MODELS: llama3.3,qwen2.5-coder
       ENABLE_RAG_WEB_SEARCH: "true"
@@ -228,8 +210,6 @@ services:
       - "3001:8080"
     volumes:
       - open_webui_data:/app/backend/data
-    depends_on:
-      - ollama
     profiles: [ai]
 
   # ── LiteLLM (proxy unificado de LLMs) ───────────────────────────────────────
@@ -241,7 +221,7 @@ services:
     command: ["--config", "/app/config.yaml", "--port", "4000", "--detailed_debug"]
     environment:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: http://ollama-ia1upsekrad96at5hq97e4qa:11434
       LITELLM_MASTER_KEY: ${LITELLM_API_KEY:-arcadia-internal}
     ports:
       - "4000:4000"
@@ -326,7 +306,6 @@ services:
 
 volumes:
   pgdata:
-  ollama_models:
   open_webui_data:
   superset_home:
   erpnext_db:
