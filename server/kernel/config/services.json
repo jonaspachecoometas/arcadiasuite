@@ -70,13 +70,36 @@
       "autoStart": true
     },
     {
+      "id": "python-fisco",
+      "name": "Motor Fiscal",
+      "description": "NF-e/NFC-e - NCMs, CFOPs, CESTs, SEFAZ",
+      "type": "python",
+      "command": "python3",
+      "args": ["-m", "uvicorn", "fisco_service:app", "--host", "0.0.0.0", "--port", "8002"],
+      "cwd": "./server/python",
+      "port": 8002,
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "env": {
+        "PYTHONPATH": ".",
+        "SERVICE_NAME": "fisco",
+        "LOG_LEVEL": "info"
+      },
+      "maxRestarts": 5,
+      "autoStart": false
+    },
+    {
       "id": "node-communication",
       "name": "Communication Service",
       "description": "Serviço de comunicação WhatsApp e outros canais",
       "type": "node",
       "command": "node",
       "args": ["dist/services/communication/index.js"],
-      "port": 9001,
+      "port": 8006,
       "healthCheck": {
         "path": "/health",
         "interval": 30000,
@@ -86,11 +109,12 @@
       "env": {
         "NODE_ENV": "production",
         "SERVICE_NAME": "communication",
-        "PORT": "9001"
+        "PORT": "8006"
       },
       "maxRestarts": 5,
       "autoStart": false
     },
+
     {
       "id": "node-core-api",
       "name": "Core API Service",

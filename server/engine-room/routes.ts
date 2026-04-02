@@ -1,5 +1,17 @@
 import type { Express, Request, Response } from "express";
-import { restartManagedService, stopManagedService, getManagedServiceInfo, getManagedServiceLogs } from "../index";
+import { 
+  getKernelEngines, 
+  getKernelServiceInfo, 
+  getKernelServiceLogs,
+  startKernelService,
+  stopKernelService, 
+  restartKernelService,
+  getKernelHealth,
+  isKernelAvailable
+} from "./kernel-adapter";
+
+// Fallback para sistema antigo (import comentado - remover após validação)
+// import { restartManagedService, stopManagedService, getManagedServiceInfo, getManagedServiceLogs } from "../index";
 
 interface EngineConfig {
   name: string;
@@ -120,7 +132,45 @@ export function registerEngineRoomRoutes(app: Express): void {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      const results = await Promise.all(ENGINES.map(checkEngineHealth));
+      // Verificar se Kernel está disponível
+      const kernelAvailable = await isKernelAvailable();
+      if (!kernelAvailable) {
+        return res.status(503).json({ 
+          error: "Kernel não disponível", 
+          message: "O Arcadia Kernel (porta 5001) não está respondendo. Verifique se está rodando com KERNEL_ENABLED=true" 
+        });
+      }
+
+      // Obter engines do Kernel
+      const kernelEngines = await getKernelEngines();
+      
+      // Adicionar Plus (gerenciado externamente - PHP/Laravel)
+      const plusEngine = ENGINES.find(e => e.name === "plus");
+      if (plusEngine) {
+        const plusHealth = await checkEngineHealth(plusEngine);
+        kernelEngines.push({
+          ...plusHealth,
+          name: "plus",
+          displayName: "Arcadia Plus (ERP)",
+          type: "php",
+          category: "erp",
+          description: "ERP completo Laravel",
+        } as any);
+      }
+
+      // Adicionar MetaSet (gerenciado externamente - Java)
+      const metasetEngine = ENGINES.find(e => e.name === "metaset");
+      if (metasetEngine) {
+        const metasetHealth = await checkEngineHealth(metasetEngine);
+        kernelEngines.push({
+          ...metasetHealth,
+          name: "metaset",
+          displayName: "MetaSet (Motor BI)",
+          type: "java",
+          category: "data",
+          description: "Motor de BI - Consultas, Dashboards, Gráficos",
+        } as any);
+      }
 
       let agentsStatus: any[] = [];
       try {
@@ -130,11 +180,11 @@ export function registerEngineRoomRoutes(app: Express): void {
         agentsStatus = [];
       }
 
-      const online = results.filter((r) => r.status === "online").length;
-      const total = results.length;
+      const online = kernelEngines.filter((r) => r.status === "online").length;
+      const total = kernelEngines.length;
 
       res.json({
-        engines: results,
+        engines: kernelEngines,
         agents: agentsStatus,
         summary: {
           total_engines: total,
@@ -239,13 +289,6 @@ export function registerEngineRoomRoutes(app: Express): void {
     }
   });
 
-  const ENGINE_NAME_MAP: Record<string, string> = {
-    "contabil": "contabil",
-    "fisco": "fisco",
-    "bi-engine": "bi",
-    "automation-engine": "automation",
-    "metaset": "metaset",
-  };
 
   app.post("/api/engine-room/engine/:name/restart", async (req: Request, res: Response) => {
     try {
@@ -254,17 +297,21 @@ export function registerEngineRoomRoutes(app: Express): void {
       }
 
       const engineName = req.params.name;
-      const serviceName = ENGINE_NAME_MAP[engineName];
 
       if (engineName === "plus") {
         return res.status(400).json({ error: "Plus (Laravel) nao pode ser reiniciado por aqui" });
       }
-
-      if (!serviceName) {
-        return res.status(404).json({ error: "Motor nao encontrado" });
+      if (engineName === "metaset") {
+        return res.status(400).json({ error: "MetaSet (Java) nao pode ser reiniciado por aqui" });
       }
 
-      const restarted = restartManagedService(serviceName);
+      // Verificar se Kernel está disponível
+      const kernelAvailable = await isKernelAvailable();
+      if (!kernelAvailable) {
+        return res.status(503).json({ error: "Kernel não disponível" });
+      }
+
+      const restarted = await restartKernelService(engineName);
       if (restarted) {
         res.json({ success: true, message: `Motor ${engineName} reiniciando...` });
       } else {
@@ -282,17 +329,21 @@ export function registerEngineRoomRoutes(app: Express): void {
       }
 
       const engineName = req.params.name;
-      const serviceName = ENGINE_NAME_MAP[engineName];
 
       if (engineName === "plus") {
         return res.status(400).json({ error: "Plus (Laravel) nao pode ser parado por aqui" });
       }
-
-      if (!serviceName) {
-        return res.status(404).json({ error: "Motor nao encontrado" });
+      if (engineName === "metaset") {
+        return res.status(400).json({ error: "MetaSet (Java) nao pode ser parado por aqui" });
       }
 
-      const stopped = stopManagedService(serviceName);
+      // Verificar se Kernel está disponível
+      const kernelAvailable = await isKernelAvailable();
+      if (!kernelAvailable) {
+        return res.status(503).json({ error: "Kernel não disponível" });
+      }
+
+      const stopped = await stopKernelService(engineName);
       if (stopped) {
         res.json({ success: true, message: `Motor ${engineName} parado` });
       } else {
@@ -310,18 +361,22 @@ export function registerEngineRoomRoutes(app: Express): void {
       }
 
       const engineName = req.params.name;
-      const serviceName = ENGINE_NAME_MAP[engineName];
 
       if (engineName === "plus") {
         return res.status(400).json({ error: "Plus (Laravel) nao pode ser iniciado por aqui" });
       }
-
-      if (!serviceName) {
-        return res.status(404).json({ error: "Motor nao encontrado" });
+      if (engineName === "metaset") {
+        return res.status(400).json({ error: "MetaSet (Java) nao pode ser iniciado por aqui" });
       }
 
-      const restarted = restartManagedService(serviceName);
-      if (restarted) {
+      // Verificar se Kernel está disponível
+      const kernelAvailable = await isKernelAvailable();
+      if (!kernelAvailable) {
+        return res.status(503).json({ error: "Kernel não disponível" });
+      }
+
+      const started = await startKernelService(engineName);
+      if (started) {
         res.json({ success: true, message: `Motor ${engineName} iniciando...` });
       } else {
         res.status(500).json({ error: `Falha ao iniciar motor ${engineName}` });
@@ -338,16 +393,15 @@ export function registerEngineRoomRoutes(app: Express): void {
       }
 
       const engineName = req.params.name;
-      const serviceName = ENGINE_NAME_MAP[engineName];
 
-      if (!serviceName) {
-        if (engineName === "plus") {
-          return res.json({ name: "plus", port: 8080, status: "managed-externally", message: "Plus e gerenciado separadamente" });
-        }
-        return res.status(404).json({ error: "Motor nao encontrado" });
+      if (engineName === "plus") {
+        return res.json({ name: "plus", port: 8080, status: "managed-externally", message: "Plus e gerenciado separadamente" });
+      }
+      if (engineName === "metaset") {
+        return res.json({ name: "metaset", port: 8088, status: "managed-externally", message: "MetaSet e gerenciado separadamente (Java)" });
       }
 
-      const info = getManagedServiceInfo(serviceName);
+      const info = await getKernelServiceInfo(engineName);
       if (!info) {
         return res.status(404).json({ error: "Servico nao encontrado no gerenciador" });
       }
@@ -365,14 +419,14 @@ export function registerEngineRoomRoutes(app: Express): void {
       }
 
       const engineName = req.params.name;
-      const serviceName = ENGINE_NAME_MAP[engineName];
 
-      if (!serviceName) {
-        return res.status(404).json({ error: "Motor nao encontrado" });
+      // Serviços externos não têm logs via Kernel
+      if (engineName === "plus" || engineName === "metaset") {
+        return res.json({ engine: engineName, lines: 0, logs: [], message: "Logs nao disponiveis para servicos gerenciados externamente" });
       }
 
       const lines = parseInt(req.query.lines as string) || 50;
-      const logs = getManagedServiceLogs(serviceName, lines);
+      const logs = await getKernelServiceLogs(engineName, lines);
 
       res.json({ engine: engineName, lines: logs.length, logs });
     } catch (error: any) {
@@ -380,5 +434,5 @@ export function registerEngineRoomRoutes(app: Express): void {
     }
   });
 
-  console.log("[Engine Room] Rotas registradas em /api/engine-room/*");
+  console.log("[Engine Room] Rotas registradas em /api/engine-room/* (usando Kernel Adapter)");
 }
