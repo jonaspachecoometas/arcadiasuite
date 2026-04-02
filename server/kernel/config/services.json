@@ -1,0 +1,139 @@
+{
+  "services": [
+    {
+      "id": "python-contabil",
+      "name": "Contabil Service",
+      "description": "Serviço de contabilidade e integração fiscal",
+      "type": "python",
+      "command": "python3",
+      "args": ["-m", "uvicorn", "contabil.main:app", "--host", "0.0.0.0", "--port", "8003"],
+      "cwd": "./python-service",
+      "port": 8003,
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "env": {
+        "PYTHONPATH": ".",
+        "SERVICE_NAME": "contabil",
+        "LOG_LEVEL": "info"
+      },
+      "maxRestarts": 5,
+      "autoStart": true
+    },
+    {
+      "id": "python-bi",
+      "name": "BI Engine",
+      "description": "Motor de Business Intelligence e análise de dados",
+      "type": "python",
+      "command": "python3",
+      "args": ["-m", "uvicorn", "bi_engine.main:app", "--host", "0.0.0.0", "--port", "8004"],
+      "cwd": "./python-service",
+      "port": 8004,
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "env": {
+        "PYTHONPATH": ".",
+        "SERVICE_NAME": "bi",
+        "LOG_LEVEL": "info"
+      },
+      "maxRestarts": 5,
+      "autoStart": true
+    },
+    {
+      "id": "python-automation",
+      "name": "Automation Service",
+      "description": "Serviço de automações e workflows",
+      "type": "python",
+      "command": "python3",
+      "args": ["-m", "uvicorn", "automation.main:app", "--host", "0.0.0.0", "--port", "8005"],
+      "cwd": "./python-service",
+      "port": 8005,
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "env": {
+        "PYTHONPATH": ".",
+        "SERVICE_NAME": "automation",
+        "LOG_LEVEL": "info"
+      },
+      "maxRestarts": 5,
+      "autoStart": true
+    },
+    {
+      "id": "node-communication",
+      "name": "Communication Service",
+      "description": "Serviço de comunicação WhatsApp e outros canais",
+      "type": "node",
+      "command": "node",
+      "args": ["dist/services/communication/index.js"],
+      "port": 9001,
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "SERVICE_NAME": "communication",
+        "PORT": "9001"
+      },
+      "maxRestarts": 5,
+      "autoStart": false
+    },
+    {
+      "id": "node-core-api",
+      "name": "Core API Service",
+      "description": "API Core adicional para processamento",
+      "type": "node",
+      "command": "node",
+      "args": ["dist/services/core-api/index.js"],
+      "port": 9002,
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "SERVICE_NAME": "core-api",
+        "PORT": "9002"
+      },
+      "maxRestarts": 5,
+      "autoStart": false
+    },
+    {
+      "id": "node-worker",
+      "name": "Worker Service",
+      "description": "Processamento de jobs e tarefas em background",
+      "type": "node",
+      "command": "node",
+      "args": ["dist/services/worker/index.js"],
+      "port": 9003,
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "env": {
+        "NODE_ENV": "production",
+        "SERVICE_NAME": "worker",
+        "PORT": "9003"
+      },
+      "maxRestarts": 5,
+      "autoStart": false
+    }
+  ]
+}

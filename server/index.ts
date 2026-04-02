@@ -8,6 +8,7 @@ import { createServer } from "http";
 import { spawn } from "child_process";
 import path from "path";
 import { logger, httpLogger } from "./logger";
+import { ArcadiaKernel } from "./kernel"; // Kernel Nativo - Semana 3
 
 interface ManagedService {
   name: string;
@@ -397,4 +398,21 @@ export function log(message: string, source = "express") {
       log(`serving on port ${port}`);
     },
   );
+
+  // Inicia Arcadia Kernel (Dashboard porta 5001) - Semana 3
+  // Só inicia se KERNEL_ENABLED estiver setado
+  if (process.env.KERNEL_ENABLED === 'true') {
+    try {
+      const kernel = new ArcadiaKernel({
+        dashboard: { enabled: true, port: 5001, host: '0.0.0.0' },
+        autoStart: process.env.KERNEL_AUTOSTART === 'true',
+      });
+      await kernel.start();
+      log('Arcadia Kernel iniciado em http://0.0.0.0:5001');
+    } catch (error) {
+      log(`Erro ao iniciar Kernel: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  } else {
+    log('Kernel desabilitado (set KERNEL_ENABLED=true para ativar)');
+  }
 })();
