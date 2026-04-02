@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arcadia Kernel Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a24;
+            --bg-hover: #252535;
+            --accent: #6366f1;
+            --accent-hover: #818cf8;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --info: #3b82f6;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --border: #2d2d3d;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+        
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent), #a855f7);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        .logo span {
+            color: var(--accent);
+        }
+        
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border-radius: 20px;
+            font-size: 0.875rem;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.online {
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent);
+        }
+        
+        .stat-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stat-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+        
+        .stat-icon.services { background: rgba(99, 102, 241, 0.2); }
+        .stat-icon.running { background: rgba(34, 197, 94, 0.2); }
+        .stat-icon.health { background: rgba(59, 130, 246, 0.2); }
+        .stat-icon.logs { background: rgba(245, 158, 11, 0.2); }
+        
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-top: 0.25rem;
+        }
+        
+        .section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            overflow: hidden;
+        }
+        
+        .section-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .section-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+        
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+        
+        .btn-danger {
+            background: var(--error);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }
+        
+        .btn:hover {
+            transform: translateY(-1px);
+        }
+        
+        .services-grid {
+            display: grid;
+            gap: 1rem;
+            padding: 1.5rem;
+        }
+        
+        .service-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1.25rem;
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.2s;
+        }
+        
+        .service-card:hover {
+            border-color: var(--accent);
+        }
+        
+        .service-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        
+        .service-status.running { background: var(--success); box-shadow: 0 0 8px var(--success); }
+        .service-status.stopped { background: var(--text-secondary); }
+        .service-status.error { background: var(--error); animation: pulse 1s infinite; }
+        .service-status.restarting { background: var(--warning); animation: pulse 1s infinite; }
+        
+        .service-info h4 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+        
+        .service-meta {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        
+        .service-meta span {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        
+        .service-health {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .service-health.healthy { background: rgba(34, 197, 94, 0.2); color: var(--success); }
+        .service-health.unhealthy { background: rgba(239, 68, 68, 0.2); color: var(--error); }
+        .service-health.unknown { background: rgba(148, 163, 184, 0.2); color: var(--text-secondary); }
+        
+        .service-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .service-actions .btn {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.75rem;
+        }
+        
+        .logs-container {
+            padding: 1.5rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .log-entry {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 0.8rem;
+            padding: 0.5rem;
+            border-radius: 6px;
+            margin-bottom: 0.25rem;
+            display: flex;
+            gap: 1rem;
+        }
+        
+        .log-entry:hover {
+            background: var(--bg-hover);
+        }
+        
+        .log-time {
+            color: var(--text-secondary);
+            min-width: 80px;
+        }
+        
+        .log-service {
+            color: var(--accent);
+            min-width: 120px;
+        }
+        
+        .log-level {
+            min-width: 50px;
+            font-weight: 600;
+        }
+        
+        .log-level.error { color: var(--error); }
+        .log-level.warn { color: var(--warning); }
+        .log-level.info { color: var(--info); }
+        .log-level.debug { color: var(--text-secondary); }
+        
+        .websocket-status {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+        
+        .empty-state-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">🎯</div>
+            <div>
+                <h1>Arcadia <span>Kernel</span></h1>
+            </div>
+        </div>
+        <div class="status-badge">
+            <span class="status-dot online"></span>
+            <span>Online</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon services">📦</div>
+                    <div class="stat-label">Total de Serviços</div>
+                </div>
+                <div class="stat-value" id="total-services">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon running">🚀</div>
+                    <div class="stat-label">Rodando</div>
+                </div>
+                <div class="stat-value" id="running-services" style="color: var(--success)">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon health">❤️</div>
+                    <div class="stat-label">Healthy</div>
+                </div>
+                <div class="stat-value" id="healthy-services" style="color: var(--info)">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon logs">📝</div>
+                    <div class="stat-label">Total de Logs</div>
+                </div>
+                <div class="stat-value" id="total-logs">-</div>
+            </div>
+        </div>
+
+        <!-- Services Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">
+                    🔧 Serviços
+                </div>
+                <div class="actions">
+                    <button class="btn btn-success" onclick="startAll()">
+                        ▶️ Iniciar Todos
+                    </button>
+                    <button class="btn btn-danger" onclick="stopAll()">
+                        ⏹️ Parar Todos
+                    </button>
+                    <button class="btn btn-secondary" onclick="loadData()">
+                        🔄 Atualizar
+                    </button>
+                </div>
+            </div>
+            <div class="services-grid" id="services-list">
+                <div class="loading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs Section -->
+        <div class="section">
+            <div class="section-header">
+                <div class="section-title">
+                    📜 Logs Recentes
+                </div>
+                <div class="actions">
+                    <select class="btn btn-secondary" id="log-service" onchange="loadLogs()">
+                        <option value="">Todos os serviços</option>
+                    </select>
+                    <button class="btn btn-secondary" onclick="clearLogs()">
+                        🗑️ Limpar
+                    </button>
+                </div>
+            </div>
+            <div class="logs-container" id="logs-container">
+                <div class="loading">Carregando logs...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="websocket-status" id="ws-status">
+        <span class="status-dot" id="ws-dot"></span>
+        <span id="ws-text">WebSocket: Conectando...</span>
+    </div>
+
+    <script>
+        const API_BASE = '/api/kernel';
+        let ws = null;
+        let servicesData = [];
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData();
+            connectWebSocket();
+        });
+
+        // Carregar dados iniciais
+        async function loadData() {
+            try {
+                const [healthRes, statsRes, servicesRes] = await Promise.all([
+                    fetch('/api/kernel/health'),
+                    fetch('/api/kernel/stats'),
+                    fetch('/api/kernel/services')
+                ]);
+
+                const health = await healthRes.json();
+                const stats = await statsRes.json();
+                const services = await servicesRes.json();
+
+                updateStats(health.data, stats.data);
+                renderServices(services.data);
+                loadLogs();
+            } catch (error) {
+                console.error('Erro ao carregar dados:', error);
+            }
+        }
+
+        // Atualizar estatísticas
+        function updateStats(health, stats) {
+            document.getElementById('total-services').textContent = health.summary.total;
+            document.getElementById('running-services').textContent = health.summary.running;
+            document.getElementById('healthy-services').textContent = health.summary.healthy;
+            document.getElementById('total-logs').textContent = stats.logs.totalLogs.toLocaleString();
+        }
+
+        // Renderizar serviços
+        function renderServices(services) {
+            servicesData = services;
+            const container = document.getElementById('services-list');
+            
+            if (!services || services.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <p>Nenhum serviço encontrado</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = services.map(service => {
+                const status = service.status || 'stopped';
+                const health = service.health || 'unknown';
+                const uptime = service.startTime 
+                    ? formatUptime(Date.now() - new Date(service.startTime).getTime())
+                    : '-';
+                
+                return `
+                    <div class="service-card" id="service-${service.config.id}">
+                        <div class="service-status ${status}"></div>
+                        <div class="service-info">
+                            <h4>${service.config.name}</h4>
+                            <div class="service-meta">
+                                <span>🔌 ${service.config.port || 'N/A'}</span>
+                                <span>📁 ${service.config.type}</span>
+                                <span>⏱️ ${uptime}</span>
+                                ${service.pid ? `<span>🆔 PID: ${service.pid}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="service-health ${health}">${health}</div>
+                        <div class="service-actions">
+                            ${status === 'stopped' || status === 'error' 
+                                ? `<button class="btn btn-success" onclick="startService('${service.config.id}')">▶️</button>`
+                                : `<button class="btn btn-danger" onclick="stopService('${service.config.id}')">⏹️</button>`
+                            }
+                            <button class="btn btn-secondary" onclick="restartService('${service.config.id}')">🔄</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Atualizar select de logs
+            updateLogSelect(services);
+        }
+
+        // Atualizar select de logs
+        function updateLogSelect(services) {
+            const select = document.getElementById('log-service');
+            const currentValue = select.value;
+            
+            select.innerHTML = '<option value="">Todos os serviços</option>' +
+                services.map(s => `<option value="${s.config.id}">${s.config.name}</option>`).join('');
+            
+            select.value = currentValue;
+        }
+
+        // Carregar logs
+        async function loadLogs() {
+            const serviceId = document.getElementById('log-service').value;
+            const container = document.getElementById('logs-container');
+            
+            try {
+                const url = serviceId 
+                    ? `/api/kernel/services/${serviceId}/logs?lines=50`
+                    : '/api/kernel/logs?lines=50';
+                
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                renderLogs(data.data || []);
+            } catch (error) {
+                container.innerHTML = `<div class="empty-state">Erro ao carregar logs</div>`;
+            }
+        }
+
+        // Renderizar logs
+        function renderLogs(logs) {
+            const container = document.getElementById('logs-container');
+            
+            if (!logs || logs.length === 0) {
+                container.innerHTML = `<div class="empty-state">Nenhum log encontrado</div>`;
+                return;
+            }
+
+            container.innerHTML = logs.map(log => {
+                const time = new Date(log.timestamp).toLocaleTimeString('pt-BR');
+                return `
+                    <div class="log-entry">
+                        <span class="log-time">${time}</span>
+                        <span class="log-service">${log.serviceId}</span>
+                        <span class="log-level ${log.level}">${log.level.toUpperCase()}</span>
+                        <span class="log-message">${escapeHtml(log.message)}</span>
+                    </div>
+                `;
+            }).join('');
+            
+            container.scrollTop = container.scrollHeight;
+        }
+
+        // Ações de serviços
+        async function startService(id) {
+            await fetch(`/api/kernel/services/${id}/start`, { method: 'POST' });
+            setTimeout(loadData, 500);
+        }
+
+        async function stopService(id) {
+            await fetch(`/api/kernel/services/${id}/stop`, { method: 'POST' });
+            setTimeout(loadData, 500);
+        }
+
+        async function restartService(id) {
+            await fetch(`/api/kernel/services/${id}/restart`, { method: 'POST' });
+            setTimeout(loadData, 500);
+        }
+
+        async function startAll() {
+            await fetch('/api/kernel/actions/start-all', { method: 'POST' });
+            setTimeout(loadData, 1000);
+        }
+
+        async function stopAll() {
+            await fetch('/api/kernel/actions/stop-all', { method: 'POST' });
+            setTimeout(loadData, 1000);
+        }
+
+        async function clearLogs() {
+            await fetch('/api/kernel/logs', { method: 'DELETE' });
+            loadLogs();
+        }
+
+        // WebSocket
+        function connectWebSocket() {
+            const wsUrl = `ws://${window.location.host}/ws/kernel`;
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                updateWsStatus(true, 'Conectado');
+            };
+            
+            ws.onclose = () => {
+                updateWsStatus(false, 'Desconectado');
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = () => {
+                updateWsStatus(false, 'Erro');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleWebSocketMessage(data);
+            };
+        }
+
+        function updateWsStatus(connected, text) {
+            const dot = document.getElementById('ws-dot');
+            const txt = document.getElementById('ws-text');
+            
+            dot.className = 'status-dot ' + (connected ? 'online' : '');
+            dot.style.background = connected ? 'var(--success)' : 'var(--error)';
+            txt.textContent = `WebSocket: ${text}`;
+        }
+
+        function handleWebSocketMessage(data) {
+            if (data.type === 'state' || data.type === 'health') {
+                loadData();
+            }
+            if (data.type === 'log') {
+                loadLogs();
+            }
+        }
+
+        // Utilitários
+        function formatUptime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            
+            if (hours > 0) return `${hours}h ${minutes % 60}m`;
+            if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+            return `${seconds}s`;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Auto refresh a cada 5 segundos
+        setInterval(loadData, 5000);
+    </script>
+</body>
+</html>

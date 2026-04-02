@@ -5,6 +5,9 @@
 
 import express, { Application, Request, Response } from 'express';
 import { createServer, Server } from 'http';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { ProcessManager } from '../core/ProcessManager';
 import { HealthMonitor } from '../core/HealthMonitor';
 import { LogAggregator } from '../core/LogAggregator';
@@ -101,17 +104,29 @@ export class DashboardServer {
     );
     this.app.use('/api/kernel', kernelRoutes);
 
+    // Serve dashboard HTML
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const publicPath = join(__dirname, 'public');
+    
     this.app.get('/', (req: Request, res: Response) => {
-      res.json({
-        name: 'Arcadia Kernel Dashboard',
-        version: '1.0.0',
-        endpoints: {
-          dashboard: '/',
-          health: '/health',
-          api: '/api/kernel',
-          websocket: '/ws/kernel',
-        }
-      });
+      try {
+        const indexPath = join(publicPath, 'index.html');
+        const html = readFileSync(indexPath, 'utf-8');
+        res.setHeader('Content-Type', 'text/html');
+        res.send(html);
+      } catch (error) {
+        res.json({
+          name: 'Arcadia Kernel Dashboard',
+          version: '1.0.0',
+          error: 'Dashboard HTML not found',
+          endpoints: {
+            health: '/health',
+            api: '/api/kernel',
+            websocket: '/ws/kernel',
+          }
+        });
+      }
     });
   }
 }
