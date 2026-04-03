@@ -116,6 +116,9 @@ async function checkServiceHealth(engineName: string): Promise<EngineStatus> {
   const serviceUrl = getServiceUrl(engineName);
   const kernelId = ENGINE_TO_KERNEL_ID[engineName];
   
+  // DEBUG: Log da URL sendo usada
+  console.log(`[DEBUG] checkServiceHealth(${engineName}) => URL: ${serviceUrl}, env: ${process.env.CONTABIL_PYTHON_URL || 'N/A'}`);
+  
   if (!config || !serviceUrl) {
     return {
       name: engineName,
