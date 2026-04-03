@@ -13,12 +13,30 @@ const KERNEL_BASE_URL = 'http://localhost:5001/api/kernel';
 const IS_DOCKER_MODE = process.env.DOCKER_MODE === 'true';
 
 // URLs dos serviços externos em modo Docker (vindas das env vars)
+// Em produção (Coolify), os containers têm nomes prefixados como 'arcadia-prod-{nome}-1'
+const getContainerUrl = (baseName: string, defaultPort: number): string => {
+  // Tenta descobrir o nome real do container via variável de ambiente
+  const envVarName = `${baseName.toUpperCase().replace(/-/g, '_')}_PYTHON_URL`;
+  const envUrl = process.env[envVarName];
+  
+  if (envUrl) {
+    return envUrl;
+  }
+  
+  // Fallback: tenta nomes comuns (com e sem prefixo arcadia-prod-)
+  const prefixes = ['arcadia-prod-', ''];
+  const suffixes = ['-1', ''];
+  
+  // Retorna o primeiro formato (será testado em runtime)
+  return `http://${prefixes[0]}${baseName}${suffixes[0]}:${defaultPort}`;
+};
+
 const SERVICE_URLS: Record<string, string> = {
-  "contabil": process.env.CONTABIL_PYTHON_URL || 'http://contabil:8003',
-  "bi-engine": process.env.BI_PYTHON_URL || 'http://bi:8004',
-  "automation-engine": process.env.AUTOMATION_PYTHON_URL || 'http://automation:8005',
-  "fisco": process.env.FISCO_PYTHON_URL || 'http://fisco:8002',
-  "communication": process.env.MIROFLOW_HOST ? `http://${process.env.MIROFLOW_HOST}:${process.env.MIROFLOW_PORT || 8006}` : 'http://miroflow:8006',
+  "contabil": getContainerUrl('contabil', 8003),
+  "bi-engine": getContainerUrl('bi', 8004),
+  "automation-engine": getContainerUrl('automation', 8005),
+  "fisco": getContainerUrl('fisco', 8002),
+  "communication": process.env.MIROFLOW_HOST ? `http://${process.env.MIROFLOW_HOST}:${process.env.MIROFLOW_PORT || 8006}` : 'http://arcadia-prod-miroflow-1:8006',
 };
 
 // Mapeamento: Nome do Engine Room -> ID do Kernel
@@ -460,3 +478,4 @@ export async function isKernelAvailable(): Promise<boolean> {
 }
 
 console.log(`[KernelAdapter] Adapter loaded - Modo: ${IS_DOCKER_MODE ? 'DOCKER (serviços externos)' : 'Kernel local (porta 5001)'}`);
+// FORCE REBUILD: sex 03 abr 2026 16:13:36 -03
