@@ -14,30 +14,25 @@ const IS_DOCKER_MODE = process.env.DOCKER_MODE === 'true';
 
 // URLs dos serviços externos em modo Docker (vindas das env vars)
 // Em produção (Coolify), os containers têm nomes prefixados como 'arcadia-prod-{nome}-1'
-const getContainerUrl = (baseName: string, defaultPort: number): string => {
-  // Tenta descobrir o nome real do container via variável de ambiente
-  const envVarName = `${baseName.toUpperCase().replace(/-/g, '_')}_PYTHON_URL`;
-  const envUrl = process.env[envVarName];
-  
-  if (envUrl) {
-    return envUrl;
+// IMPORTANTE: Esta função é chamada em RUNTIME, não em build time
+function getServiceUrl(engineName: string): string {
+  switch (engineName) {
+    case 'contabil':
+      return process.env.CONTABIL_PYTHON_URL || 'http://contabil:8003';
+    case 'bi-engine':
+      return process.env.BI_PYTHON_URL || 'http://bi:8004';
+    case 'automation-engine':
+      return process.env.AUTOMATION_PYTHON_URL || 'http://automation:8005';
+    case 'fisco':
+      return process.env.FISCO_PYTHON_URL || 'http://fisco:8002';
+    case 'communication':
+      return process.env.MIROFLOW_HOST 
+        ? `http://${process.env.MIROFLOW_HOST}:${process.env.MIROFLOW_PORT || 8006}` 
+        : 'http://miroflow:8006';
+    default:
+      return '';
   }
-  
-  // Fallback: tenta nomes comuns (com e sem prefixo arcadia-prod-)
-  const prefixes = ['arcadia-prod-', ''];
-  const suffixes = ['-1', ''];
-  
-  // Retorna o primeiro formato (será testado em runtime)
-  return `http://${prefixes[0]}${baseName}${suffixes[0]}:${defaultPort}`;
-};
-
-const SERVICE_URLS: Record<string, string> = {
-  "contabil": getContainerUrl('contabil', 8003),
-  "bi-engine": getContainerUrl('bi', 8004),
-  "automation-engine": getContainerUrl('automation', 8005),
-  "fisco": getContainerUrl('fisco', 8002),
-  "communication": process.env.MIROFLOW_HOST ? `http://${process.env.MIROFLOW_HOST}:${process.env.MIROFLOW_PORT || 8006}` : 'http://arcadia-prod-miroflow-1:8006',
-};
+}
 
 // Mapeamento: Nome do Engine Room -> ID do Kernel
 // NOTA: metaset NÃO está aqui - é gerenciado externamente (Java)
@@ -117,7 +112,8 @@ interface EngineStatus {
 // Health check direto de um serviço (modo Docker)
 async function checkServiceHealth(engineName: string): Promise<EngineStatus> {
   const config = ENGINE_CONFIG[engineName];
-  const serviceUrl = SERVICE_URLS[engineName];
+  // IMPORTANTE: getServiceUrl é chamado em RUNTIME, não em build time
+  const serviceUrl = getServiceUrl(engineName);
   const kernelId = ENGINE_TO_KERNEL_ID[engineName];
   
   if (!config || !serviceUrl) {
