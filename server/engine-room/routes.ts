@@ -83,7 +83,7 @@ const ENGINES: EngineConfig[] = [
     displayName: "MetaSet (Motor BI)",
     type: "java",
     port: 8088,
-    healthPath: "/api/health",
+    healthPath: "/health",
     category: "data",
     description: "Motor de BI - Consultas, Dashboards, Gráficos, Análises",
   },
