@@ -89,8 +89,24 @@ const ENGINES: EngineConfig[] = [
   },
 ];
 
+// Helper para obter URL de health check - considera containers externos
+function getEngineHealthUrl(engine: EngineConfig): string {
+  // MetaSet/Superset roda em container separado
+  if (engine.name === "metaset") {
+    const supersetHost = process.env.SUPERSET_HOST || "superset";
+    return `http://${supersetHost}:${engine.port}${engine.healthPath}`;
+  }
+  // Plus também roda externamente (quando instalado)
+  if (engine.name === "plus") {
+    const plusHost = process.env.PLUS_HOST || "localhost";
+    return `http://${plusHost}:${engine.port}${engine.healthPath}`;
+  }
+  // Padrão: localhost (para compatibilidade)
+  return `http://localhost:${engine.port}${engine.healthPath}`;
+}
+
 async function checkEngineHealth(engine: EngineConfig): Promise<any> {
-  const url = `http://localhost:${engine.port}${engine.healthPath}`;
+  const url = getEngineHealthUrl(engine);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 5000);
 
