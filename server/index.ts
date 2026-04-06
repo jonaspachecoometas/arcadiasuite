@@ -9,6 +9,7 @@ import { spawn } from "child_process";
 import path from "path";
 import { logger, httpLogger } from "./logger";
 import { ArcadiaKernel } from "./kernel"; // Kernel Nativo - Semana 3
+import { createProxyMiddleware } from "http-proxy-middleware"; // Proxy pro Kernel
 
 interface ManagedService {
   name: string;
@@ -357,6 +358,17 @@ export function log(message: string, source = "express") {
   }
 
   await registerRoutes(httpServer, app);
+
+  // Proxy pro Kernel Dashboard (acessível via /kernel)
+  if (process.env.KERNEL_ENABLED === 'true') {
+    app.use('/kernel', createProxyMiddleware({
+      target: 'http://localhost:5001',
+      changeOrigin: true,
+      pathRewrite: { '^/kernel': '' },
+      ws: true, // WebSocket support
+    }));
+    log('Proxy do Kernel configurado em /kernel');
+  }
 
   await registerAllTools();
 
