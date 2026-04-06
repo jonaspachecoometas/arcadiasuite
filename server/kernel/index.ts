@@ -151,6 +151,7 @@ export class ArcadiaKernel {
         this.processManager,
         this.healthMonitor,
         this.logAggregator,
+        this.serviceRegistry, // Passa o Registry pro Dashboard
         {
           port: this.options.dashboard.port,
           host: this.options.dashboard.host,

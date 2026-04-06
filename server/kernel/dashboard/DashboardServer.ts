@@ -13,6 +13,7 @@ import { HealthMonitor } from '../core/HealthMonitor';
 import { LogAggregator } from '../core/LogAggregator';
 import { KernelWebSocket } from '../websocket/KernelWebSocket';
 import { createKernelRoutes } from '../api/routes';
+import { ServiceRegistry } from '../registry/ServiceRegistry';
 
 export interface DashboardServerOptions {
   port?: number;
@@ -29,6 +30,7 @@ export class DashboardServer {
     private processManager: ProcessManager,
     private healthMonitor: HealthMonitor,
     private logAggregator: LogAggregator,
+    private serviceRegistry?: ServiceRegistry,
     options: DashboardServerOptions = {}
   ) {
     this.options = {
@@ -103,6 +105,27 @@ export class DashboardServer {
       this.logAggregator
     );
     this.app.use('/api/kernel', kernelRoutes);
+
+    // Rotas do Registry (se disponível)
+    if (this.serviceRegistry) {
+      this.app.get('/api/registry/services', (req: Request, res: Response) => {
+        const services = this.serviceRegistry!.getServices();
+        res.json({ success: true, data: services, timestamp: new Date() });
+      });
+
+      this.app.get('/api/registry/stats', (req: Request, res: Response) => {
+        const stats = this.serviceRegistry!.getStats();
+        res.json({ success: true, data: stats, timestamp: new Date() });
+      });
+
+      this.app.get('/api/registry/services/:id', (req: Request, res: Response) => {
+        const service = this.serviceRegistry!.getService(req.params.id);
+        if (!service) {
+          return res.status(404).json({ success: false, error: 'Serviço não encontrado' });
+        }
+        res.json({ success: true, data: service, timestamp: new Date() });
+      });
+    }
 
     // Serve dashboard HTML
     // Suporte a ESM e CommonJS (build do Docker)
