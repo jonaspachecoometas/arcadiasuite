@@ -64,6 +64,7 @@ services:
       # Kernel Arcadia (Service Discovery)
       KERNEL_ENABLED: "true"
       KERNEL_AUTOSTART: "true"
+      COOLIFY_API_TOKEN: "${COOLIFY_API_TOKEN:-}"
     ports:
       - "5000:5000"
     volumes:

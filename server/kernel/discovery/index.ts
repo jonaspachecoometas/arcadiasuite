@@ -6,3 +6,5 @@
 export { DockerDiscovery } from './DockerDiscovery';
 export type { DockerDiscoveryOptions } from './DockerDiscovery';
 export { StaticDiscovery } from './StaticDiscovery';
+export { CoolifyDiscovery } from './CoolifyDiscovery';
+export type { CoolifyDiscoveryOptions } from './CoolifyDiscovery';

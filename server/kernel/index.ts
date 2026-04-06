@@ -18,6 +18,7 @@ import { ServiceConfig, ServiceState } from './types';
 import { ServiceRegistry } from './registry/ServiceRegistry';
 import { DockerDiscovery } from './discovery/DockerDiscovery';
 import { StaticDiscovery } from './discovery/StaticDiscovery';
+import { CoolifyDiscovery } from './discovery/CoolifyDiscovery';
 import { RegistryConfig, RegisteredService } from './registry/types';
 
 // Suporte a ESM e CommonJS (build do Docker)
@@ -104,7 +105,11 @@ export class ArcadiaKernel {
       this.serviceRegistry = new ServiceRegistry({
         config: this.options.registry.config,
         discoveryProviders: [
-          new StaticDiscovery(), // Descoberta via DNS interno (recomendado)
+          new StaticDiscovery(), // Descoberta via DNS interno
+          new CoolifyDiscovery({ // Descoberta via API Coolify
+            baseUrl: 'https://coolify.onboardbi.com.br',
+            token: process.env.COOLIFY_API_TOKEN || '',
+          }),
           new DockerDiscovery({ networkName: 'arcadia' }), // Fallback
         ],
       });
