@@ -5,3 +5,4 @@
 
 export { DockerDiscovery } from './DockerDiscovery';
 export type { DockerDiscoveryOptions } from './DockerDiscovery';
+export { StaticDiscovery } from './StaticDiscovery';
