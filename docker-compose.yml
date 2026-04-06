@@ -83,6 +83,16 @@ services:
       context: .
       dockerfile: Dockerfile.python
     restart: unless-stopped
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=Motor Contábil"
+      - "arcadia.type=python"
+      - "arcadia.category=contabil"
+      - "arcadia.port=8003"
+      - "arcadia.capabilities=lancamentos,dre,balancete,razao"
+      - "arcadia.requires_ia=false"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=Contabilidade - Lançamentos, DRE, Balancete, Razão"
     environment:
       SERVICE_NAME: contabil
       SERVICE_PORT: 8003
@@ -100,6 +110,17 @@ services:
       context: .
       dockerfile: Dockerfile.python
     restart: unless-stopped
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=Motor BI"
+      - "arcadia.type=python"
+      - "arcadia.category=bi"
+      - "arcadia.port=8004"
+      - "arcadia.capabilities=sql,charts,microbi,cache"
+      - "arcadia.requires_ia=true"
+      - "arcadia.ia_policies=bi,lgpd"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=Business Intelligence - SQL, Charts, Micro-BI, Cache"
     environment:
       SERVICE_NAME: bi
       SERVICE_PORT: 8004
@@ -117,6 +138,17 @@ services:
       context: .
       dockerfile: Dockerfile.python
     restart: unless-stopped
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=Motor Automação"
+      - "arcadia.type=python"
+      - "arcadia.category=automation"
+      - "arcadia.port=8005"
+      - "arcadia.capabilities=scheduler,eventbus,workflow"
+      - "arcadia.requires_ia=true"
+      - "arcadia.ia_policies=automation"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=Scheduler, Event Bus, Workflow Executor"
     environment:
       SERVICE_NAME: automation
       SERVICE_PORT: 8005
@@ -134,6 +166,17 @@ services:
       context: .
       dockerfile: Dockerfile.python
     restart: unless-stopped
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=Motor Fiscal"
+      - "arcadia.type=python"
+      - "arcadia.category=fiscal"
+      - "arcadia.port=8002"
+      - "arcadia.capabilities=nfe,nfce,ncm,cfop,cest,sefaz"
+      - "arcadia.requires_ia=true"
+      - "arcadia.ia_policies=fiscal"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=NF-e/NFC-e - NCMs, CFOPs, CESTs, SEFAZ"
     environment:
       SERVICE_NAME: fisco
       SERVICE_PORT: 8002
@@ -151,6 +194,17 @@ services:
       context: .
       dockerfile: Dockerfile.python
     restart: unless-stopped
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=Serviço Embeddings"
+      - "arcadia.type=python"
+      - "arcadia.category=ai"
+      - "arcadia.port=8001"
+      - "arcadia.capabilities=embeddings,vectorsearch"
+      - "arcadia.requires_ia=true"
+      - "arcadia.ia_policies=ai,lgpd"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=Embeddings e Vector Search com pgvector"
     environment:
       SERVICE_NAME: embeddings
       SERVICE_PORT: 8001
@@ -165,6 +219,17 @@ services:
   superset:
     image: apache/superset:4.1.0
     restart: unless-stopped
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=MetaSet BI"
+      - "arcadia.type=java"
+      - "arcadia.category=data"
+      - "arcadia.port=8088"
+      - "arcadia.capabilities=dashboards,charts,sql_lab,datasets"
+      - "arcadia.requires_ia=false"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=Motor de BI - Consultas, Dashboards, Gráficos, Análises"
+      - "arcadia.version=4.1.0"
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-superset-secret-change-in-prod}
       DATABASE_URL: postgresql://${PGUSER:-arcadia}:${PGPASSWORD:-arcadia123}@db:5432/arcadia_superset

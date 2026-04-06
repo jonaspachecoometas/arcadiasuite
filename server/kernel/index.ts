@@ -1,6 +1,8 @@
 /**
  * Arcadia Kernel - Entry Point
  * Sistema nativo de gerenciamento de serviços
+ * 
+ * V3.0 - Adicionado Service Registry + Docker Discovery
  */
 
 import { readFileSync } from 'fs';
@@ -12,12 +14,16 @@ import { LogAggregator } from './core/LogAggregator';
 import { DashboardServer } from './dashboard/DashboardServer';
 import { ServiceConfig, ServiceState } from './types';
 
+// NOVO: Service Registry e Discovery
+import { ServiceRegistry } from './registry/ServiceRegistry';
+import { DockerDiscovery } from './discovery/DockerDiscovery';
+import { RegistryConfig, RegisteredService } from './registry/types';
+
 // Suporte a ESM e CommonJS (build do Docker)
 const __dirname = (() => {
   try {
     return dirname(fileURLToPath(import.meta.url));
   } catch {
-    // Fallback para CommonJS build
     return join(process.cwd(), 'server', 'kernel');
   }
 })();
@@ -30,6 +36,11 @@ export interface KernelOptions {
     host?: string;
   };
   autoStart?: boolean;
+  // NOVO: Opções do Service Registry
+  registry?: {
+    enabled?: boolean;
+    config?: Partial<RegistryConfig>;
+  };
 }
 
 export class ArcadiaKernel {
@@ -37,6 +48,8 @@ export class ArcadiaKernel {
   public healthMonitor: HealthMonitor;
   public logAggregator: LogAggregator;
   public dashboard?: DashboardServer;
+  // NOVO: Service Registry
+  public serviceRegistry?: ServiceRegistry;
   
   private options: Required<KernelOptions>;
   private services: ServiceConfig[] = [];
@@ -51,10 +64,19 @@ export class ArcadiaKernel {
         host: '0.0.0.0',
       },
       autoStart: false,
+      // NOVO: Registry ativado por padrão
+      registry: {
+        enabled: true,
+        config: {
+          enableAutoDiscovery: true,
+          discoveryInterval: 30000,
+          healthCheckInterval: 15000,
+        },
+      },
       ...options,
     };
 
-    // Inicializa componentes
+    // Inicializa componentes existentes
     this.logAggregator = new LogAggregator({ maxLines: 10000 });
     
     this.processManager = new ProcessManager({
@@ -76,6 +98,21 @@ export class ArcadiaKernel {
       },
     });
 
+    // NOVO: Inicializa Service Registry se habilitado
+    if (this.options.registry.enabled) {
+      this.serviceRegistry = new ServiceRegistry({
+        config: this.options.registry.config,
+        discoveryProviders: [
+          new DockerDiscovery({ networkName: 'arcadia' }),
+        ],
+      });
+
+      // Escuta eventos do registry
+      this.serviceRegistry.on('event', (event) => {
+        console.log(`[Registry] ${event.type}: ${event.serviceId}`);
+      });
+    }
+
     // Carrega configurações
     this.loadConfig();
   }
@@ -89,11 +126,16 @@ export class ArcadiaKernel {
     }
 
     console.log('[Kernel] Iniciando Arcadia Kernel...');
-    console.log(`[Kernel] ${this.services.length} serviços registrados`);
+    console.log(`[Kernel] ${this.services.length} serviços configurados (services.json)`);
 
     // Registra serviços no ProcessManager
     for (const config of this.services) {
       this.processManager.registerService(config);
+    }
+
+    // NOVO: Inicia Service Registry
+    if (this.serviceRegistry) {
+      await this.serviceRegistry.start();
     }
 
     // Inicia Dashboard
@@ -140,6 +182,9 @@ export class ArcadiaKernel {
 
     console.log('[Kernel] Parando Kernel...');
 
+    // NOVO: Para Service Registry
+    this.serviceRegistry?.stop();
+
     // Para health monitor
     this.healthMonitor.stopAll();
 
@@ -158,6 +203,26 @@ export class ArcadiaKernel {
    */
   isRunning(): boolean {
     return this.started;
+  }
+
+  /**
+   * NOVO: Retorna estatísticas combinadas (ProcessManager + Registry)
+   */
+  getStats(): { processManager: any; registry: any } {
+    return {
+      processManager: {
+        total: this.services.length,
+        states: this.processManager.getAllStates(),
+      },
+      registry: this.serviceRegistry?.getStats(),
+    };
+  }
+
+  /**
+   * NOVO: Lista serviços descobertos (via Registry)
+   */
+  getDiscoveredServices(): RegisteredService[] {
+    return this.serviceRegistry?.getServices() || [];
   }
 
   /**
@@ -204,10 +269,21 @@ export { LogAggregator } from './core/LogAggregator';
 export { DashboardServer } from './dashboard/DashboardServer';
 export { KernelWebSocket } from './websocket/KernelWebSocket';
 export { createKernelRoutes } from './api/routes';
+
+// NOVO: Exports do Registry e Discovery
+export { ServiceRegistry } from './registry/ServiceRegistry';
+export { DockerDiscovery } from './discovery/DockerDiscovery';
+export type { 
+  RegisteredService, 
+  ServiceFilter, 
+  RegistryEvent,
+  DiscoverySource,
+  ServiceCategory,
+} from './registry/types';
+
 export * from './types';
 
 // Entry point para execução direta
-// Protegido para funcionar no build CommonJS do Docker
 try {
   if (import.meta.url && import.meta.url === `file://${process.argv[1]}`) {
     const kernel = new ArcadiaKernel({

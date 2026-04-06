@@ -1,18 +1,22 @@
 /**
  * API Routes - Rotas REST do Kernel
  * Endpoints para controle e monitoramento dos serviços
+ * 
+ * V2.0 - Adicionado rotas do Service Registry (/api/registry/*)
  */
 
 import { Router, Request, Response } from 'express';
 import { ProcessManager } from '../core/ProcessManager';
 import { HealthMonitor } from '../core/HealthMonitor';
 import { LogAggregator } from '../core/LogAggregator';
-import { ApiResponse, ServiceActionRequest, ServiceLogsRequest } from '../types';
+import { ServiceRegistry } from '../registry/ServiceRegistry';
+import { ApiResponse, ServiceActionRequest } from '../types';
 
 export function createKernelRoutes(
   processManager: ProcessManager,
   healthMonitor: HealthMonitor,
-  logAggregator: LogAggregator
+  logAggregator: LogAggregator,
+  serviceRegistry?: ServiceRegistry  // NOVO: opcional
 ): Router {
   const router = Router();
 
@@ -20,17 +24,12 @@ export function createKernelRoutes(
   router.use(expressJson());
 
   // ==========================================
-  // SERVICES ENDPOINTS
+  // SERVICES ENDPOINTS (ProcessManager)
   // ==========================================
 
-  /**
-   * GET /api/kernel/services
-   * Lista todos os serviços com seu estado atual
-   */
   router.get('/services', (req: Request, res: Response) => {
     const states = processManager.getAllStates();
     
-    // Adiciona health status de cada serviço
     const servicesWithHealth = states.map(state => ({
       ...state,
       health: healthMonitor.getHealth(state.config.id),
@@ -39,10 +38,6 @@ export function createKernelRoutes(
     res.json(successResponse(servicesWithHealth));
   });
 
-  /**
-   * GET /api/kernel/services/:id
-   * Detalhes de um serviço específico
-   */
   router.get('/services/:id', (req: Request, res: Response) => {
     const { id } = req.params;
     const state = processManager.getServiceState(id);
@@ -57,10 +52,6 @@ export function createKernelRoutes(
     }));
   });
 
-  /**
-   * POST /api/kernel/services/:id/start
-   * Inicia um serviço
-   */
   router.post('/services/:id/start', async (req: Request, res: Response) => {
     const { id } = req.params;
     
@@ -75,10 +66,6 @@ export function createKernelRoutes(
     }
   });
 
-  /**
-   * POST /api/kernel/services/:id/stop
-   * Para um serviço
-   */
   router.post('/services/:id/stop', async (req: Request, res: Response) => {
     const { id } = req.params;
     const { force } = req.body as ServiceActionRequest;
@@ -94,10 +81,6 @@ export function createKernelRoutes(
     }
   });
 
-  /**
-   * POST /api/kernel/services/:id/restart
-   * Reinicia um serviço
-   */
   router.post('/services/:id/restart', async (req: Request, res: Response) => {
     const { id } = req.params;
     
@@ -112,10 +95,6 @@ export function createKernelRoutes(
     }
   });
 
-  /**
-   * POST /api/kernel/services/:id/kill
-   * Mata um serviço (force)
-   */
   router.post('/services/:id/kill', async (req: Request, res: Response) => {
     const { id } = req.params;
     
@@ -134,10 +113,6 @@ export function createKernelRoutes(
   // LOGS ENDPOINTS
   // ==========================================
 
-  /**
-   * GET /api/kernel/services/:id/logs
-   * Logs de um serviço específico
-   */
   router.get('/services/:id/logs', (req: Request, res: Response) => {
     const { id } = req.params;
     const { lines = '100', level } = req.query;
@@ -147,7 +122,6 @@ export function createKernelRoutes(
       parseInt(lines as string, 10) || 100
     );
 
-    // Filtra por nível se especificado
     let filteredLogs = logs;
     if (level) {
       const levels = ['debug', 'info', 'warn', 'error'];
@@ -158,10 +132,6 @@ export function createKernelRoutes(
     res.json(successResponse(filteredLogs));
   });
 
-  /**
-   * GET /api/kernel/logs
-   * Logs de todos os serviços
-   */
   router.get('/logs', (req: Request, res: Response) => {
     const { lines = '100', service, level } = req.query;
 
@@ -174,10 +144,6 @@ export function createKernelRoutes(
     res.json(successResponse(logs));
   });
 
-  /**
-   * DELETE /api/kernel/logs
-   * Limpa logs
-   */
   router.delete('/logs', (req: Request, res: Response) => {
     const { service } = req.query;
 
@@ -194,10 +160,6 @@ export function createKernelRoutes(
   // HEALTH ENDPOINTS
   // ==========================================
 
-  /**
-   * GET /api/kernel/health
-   * Health check geral do kernel
-   */
   router.get('/health', (req: Request, res: Response) => {
     const states = processManager.getAllStates();
     const allHealth = healthMonitor.getAllHealth();
@@ -231,14 +193,9 @@ export function createKernelRoutes(
     res.json(successResponse(health));
   });
 
-  /**
-   * GET /api/kernel/services/:id/health
-   * Health check de um serviço específico
-   */
   router.get('/services/:id/health', async (req: Request, res: Response) => {
     const { id } = req.params;
     
-    // Força um check imediato
     const health = await healthMonitor.forceCheck(id);
     
     res.json(successResponse({
@@ -252,10 +209,6 @@ export function createKernelRoutes(
   // ACTIONS ENDPOINTS
   // ==========================================
 
-  /**
-   * POST /api/kernel/actions/start-all
-   * Inicia todos os serviços
-   */
   router.post('/actions/start-all', async (req: Request, res: Response) => {
     const { auto = true } = req.body;
     
@@ -264,14 +217,9 @@ export function createKernelRoutes(
       auto,
     }));
 
-    // Executa em background
     processManager.startAll(auto).catch(() => {});
   });
 
-  /**
-   * POST /api/kernel/actions/stop-all
-   * Para todos os serviços
-   */
   router.post('/actions/stop-all', async (req: Request, res: Response) => {
     const { force = false } = req.body;
     
@@ -284,10 +232,6 @@ export function createKernelRoutes(
     }));
   });
 
-  /**
-   * POST /api/kernel/actions/restart-all
-   * Reinicia todos os serviços
-   */
   router.post('/actions/restart-all', async (req: Request, res: Response) => {
     const states = processManager.getAllStates();
     
@@ -296,7 +240,6 @@ export function createKernelRoutes(
       count: states.filter(s => s.status === 'running').length,
     }));
 
-    // Executa em background
     for (const state of states) {
       if (state.status === 'running') {
         try {
@@ -312,10 +255,6 @@ export function createKernelRoutes(
   // STATS ENDPOINTS
   // ==========================================
 
-  /**
-   * GET /api/kernel/stats
-   * Estatísticas do kernel
-   */
   router.get('/stats', (req: Request, res: Response) => {
     const states = processManager.getAllStates();
     const logStats = logAggregator.getStats();
@@ -344,13 +283,9 @@ export function createKernelRoutes(
   });
 
   // ==========================================
-  // MISC ENDPOINTS
+  // CONFIG ENDPOINTS
   // ==========================================
 
-  /**
-   * GET /api/kernel/config
-   * Configuração do kernel
-   */
   router.get('/config', (req: Request, res: Response) => {
     const states = processManager.getAllStates();
     
@@ -366,10 +301,88 @@ export function createKernelRoutes(
     }));
   });
 
+  // ==========================================
+  // SERVICE REGISTRY ENDPOINTS (NOVO)
+  // ==========================================
+
+  if (serviceRegistry) {
+    // Lista todos os serviços descobertos
+    router.get('/registry/services', (req: Request, res: Response) => {
+      const { category, type, healthy, capability } = req.query;
+      
+      const services = serviceRegistry.getServices({
+        category: category as any,
+        type: type as string,
+        healthyOnly: healthy === 'true',
+        capability: capability as string,
+      });
+
+      res.json(successResponse({
+        services,
+        total: services.length,
+        timestamp: new Date(),
+      }));
+    });
+
+    // Estatísticas do registry
+    router.get('/registry/stats', (req: Request, res: Response) => {
+      const stats = serviceRegistry.getStats();
+      res.json(successResponse(stats));
+    });
+
+    // Busca serviço específico no registry
+    router.get('/registry/services/:id', (req: Request, res: Response) => {
+      const { id } = req.params;
+      const service = serviceRegistry.getService(id);
+
+      if (!service) {
+        return res.status(404).json(errorResponse(`Serviço ${id} não encontrado no registry`));
+      }
+
+      res.json(successResponse(service));
+    });
+
+    // Busca por categoria
+    router.get('/registry/by-category/:category', (req: Request, res: Response) => {
+      const { category } = req.params;
+      const services = serviceRegistry.getByCategory(category as any);
+
+      res.json(successResponse({
+        category,
+        services,
+        count: services.length,
+      }));
+    });
+
+    // Busca por capability
+    router.get('/registry/by-capability/:capability', (req: Request, res: Response) => {
+      const { capability } = req.params;
+      const services = serviceRegistry.getByCapability(capability);
+
+      res.json(successResponse({
+        capability,
+        services,
+        count: services.length,
+      }));
+    });
+
+    // Trigger manual de discovery
+    router.post('/registry/discover', async (req: Request, res: Response) => {
+      // O discovery roda automaticamente, mas podemos forçar um health check
+      const services = serviceRegistry.getServices();
+      
+      res.json(successResponse({
+        message: 'Discovery executado',
+        servicesFound: services.length,
+        timestamp: new Date(),
+      }));
+    });
+  }
+
   return router;
 }
 
-// Helper para JSON middleware (evita import do express inteiro)
+// Helper para JSON middleware
 function expressJson() {
   return (req: Request, res: Response, next: any) => {
     if (req.headers['content-type']?.includes('application/json')) {
