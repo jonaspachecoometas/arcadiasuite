@@ -61,6 +61,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LITELLM_BASE_URL: http://litellm:4000
       LITELLM_API_KEY: ${LITELLM_API_KEY:-arcadia-internal}
+      # Kernel Arcadia (Service Discovery)
+      KERNEL_ENABLED: "true"
+      KERNEL_AUTOSTART: "true"
     ports:
       - "5000:5000"
     volumes:
