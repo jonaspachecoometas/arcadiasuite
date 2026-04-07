@@ -29,8 +29,6 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -71,6 +69,9 @@ services:
       - .:/app
       - /app/node_modules
       - /app/dist
+    networks:
+      - arcadia
+      - coolify
     depends_on:
       db:
         condition: service_healthy
@@ -219,20 +220,105 @@ services:
       db:
         condition: service_healthy
 
-  # ── Apache Superset (BI avançado) ────────────────────────────────────────────
-  superset:
-    image: apache/superset:4.1.0
+  # ── MetaSet BI (Apache Superset Fork) ────────────────────────────────────────
+  metaset:
+    build:
+      context: ./server/bi/metaset
+      dockerfile: Dockerfile
     restart: unless-stopped
     labels:
       - "arcadia.discovery.enabled=true"
       - "arcadia.name=MetaSet BI"
+      - "arcadia.type=python"
+      - "arcadia.category=bi"
+      - "arcadia.port=8100"
+      - "arcadia.capabilities=dashboards,charts,sql_lab,datasets,embedding,rls"
+      - "arcadia.requires_ia=false"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=MetaSet BI - Business Intelligence by ArcadiaSuite"
+      - "arcadia.version=4.1.0-arcadia"
+      - "traefik.enable=true"
+      - "traefik.docker.network=coolify"
+      - "traefik.http.routers.metaset.entrypoints=https"
+      - "traefik.http.routers.metaset.rule=Host(`bi.onboardbi.com.br`)"
+      - "traefik.http.routers.metaset.tls=true"
+      - "traefik.http.routers.metaset.tls.certresolver=letsencrypt"
+      - "traefik.http.services.metaset.loadbalancer.server.port=8100"
+    environment:
+      DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/metaset_db
+      ARCADIA_DATABASE_URL: postgresql://arcadia:arcadia123@db:5432/arcadia
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-arcadia-superset-secret-change-in-prod}
+      METASET_ADMIN_USER: ${SUPERSET_ADMIN_USER:-admin}
+      METASET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@arcadia.app}
+      METASET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:-arcadia2026}
+      REDIS_URL: redis://redis:6379/1
+      PYTHONPATH: /app
+      FLASK_ENV: production
+    ports:
+      - "8100:8100"
+    volumes:
+      - metaset_home:/app/superset_home
+      - ./server/bi/metaset/branding:/app/superset/static/assets/images/branding:ro
+      - ./server/bi/metaset/superset_config.py:/app/superset_config.py:ro
+    extra_hosts:
+      - "db:10.0.10.2"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ── BI-API Gateway (Node.js) ─────────────────────────────────────────────────
+  bi-api:
+    build:
+      context: .
+      dockerfile: server/bi/Dockerfile
+    restart: unless-stopped
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=BI API Gateway"
+      - "arcadia.type=node"
+      - "arcadia.category=bi"
+      - "arcadia.port=8004"
+      - "arcadia.capabilities=proxy,embed,api"
+      - "arcadia.requires_ia=false"
+      - "arcadia.health_path=/health"
+      - "arcadia.description=BI Gateway - Proxy para MetaSet e FDB-Bridge"
+      - "arcadia.version=1.0.0"
+    environment:
+      NODE_ENV: production
+      PORT: 8004
+      METASET_HOST: metaset
+      METASET_PORT: 8100
+      FDB_BRIDGE_HOST: fdb-bridge
+      FDB_BRIDGE_PORT: 8200
+    ports:
+      - "8004:8004"
+    depends_on:
+      metaset:
+        condition: service_healthy
+
+  # ── Apache Superset (BI avançado - LEGADO, será removido) ─────────────────────
+  superset:
+    image: apache/superset:4.1.0
+    restart: unless-stopped
+    profiles: [bi]
+    labels:
+      - "arcadia.discovery.enabled=true"
+      - "arcadia.name=Apache Superset"
       - "arcadia.type=java"
       - "arcadia.category=data"
       - "arcadia.port=8088"
       - "arcadia.capabilities=dashboards,charts,sql_lab,datasets"
       - "arcadia.requires_ia=false"
       - "arcadia.health_path=/health"
-      - "arcadia.description=Motor de BI - Consultas, Dashboards, Gráficos, Análises"
+      - "arcadia.description=Apache Superset original (legado)"
       - "arcadia.version=4.1.0"
     environment:
       SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:-superset-secret-change-in-prod}
@@ -250,6 +336,8 @@ services:
       - ./docker/superset/superset_config.py:/app/pythonpath/superset_config.py:ro
       - ./docker/superset/init.sh:/app/docker/init.sh:ro
       - superset_home:/app/superset_home
+    extra_hosts:
+      - "db:10.0.10.2"
     depends_on:
       db:
         condition: service_healthy
@@ -262,7 +350,6 @@ services:
       start_period: 60s
     networks:
       - arcadia
-    profiles: [bi]
 
   # ─────────────── PERFIL: ai (Soberania de IA) ────────────────────────────────
 
@@ -377,6 +464,7 @@ volumes:
   pgdata:
   open_webui_data:
   superset_home:
+  metaset_home:
   erpnext_db:
   erpnext_sites:
   erpnext_logs:
@@ -386,3 +474,6 @@ volumes:
 networks:
   arcadia:
     driver: bridge
+  coolify:
+    external: true
+    name: coolify

@@ -24,27 +24,77 @@
       "autoStart": true
     },
     {
-      "id": "python-bi",
-      "name": "BI Engine",
-      "description": "Motor de Business Intelligence e análise de dados",
-      "type": "python",
-      "command": "python3",
-      "args": ["-m", "uvicorn", "bi_engine.main:app", "--host", "0.0.0.0", "--port", "8004"],
-      "cwd": "./python-service",
+      "id": "bi-api",
+      "name": "BI API Gateway",
+      "type": "node",
+      "command": "node",
+      "args": ["dist/server/bi/index.js"],
+      "cwd": ".",
       "port": 8004,
+      "autoStart": true,
+      "env": {
+        "NODE_ENV": "production",
+        "SERVICE_NAME": "bi-api",
+        "PORT": "8004",
+        "METASET_HOST": "127.0.0.1",
+        "METASET_PORT": "8100",
+        "FDB_BRIDGE_PORT": "8200"
+      },
       "healthCheck": {
-        "path": "/health",
+        "path": "/bi/health",
         "interval": 30000,
         "timeout": 5000,
         "retries": 3
       },
-      "env": {
-        "PYTHONPATH": ".",
-        "SERVICE_NAME": "bi",
-        "LOG_LEVEL": "info"
-      },
       "maxRestarts": 5,
-      "autoStart": true
+      "description": "Gateway de BI com proxy para MetaSet e FDB-Bridge"
+    },
+    {
+      "id": "metaset",
+      "name": "MetaSet BI",
+      "type": "python",
+      "command": "python",
+      "args": ["server/bi/metaset/run.py", "--port=8100", "--host=127.0.0.1"],
+      "cwd": ".",
+      "port": 8100,
+      "autoStart": false,
+      "env": {
+        "PYTHONPATH": "server/bi/metaset",
+        "FLASK_ENV": "production",
+        "SUPERSET_CONFIG_PATH": "server/bi/metaset/superset_config.py",
+        "SUPERSET_SECRET_KEY": "${SUPERSET_SECRET_KEY}"
+      },
+      "healthCheck": {
+        "path": "/health",
+        "interval": 30000,
+        "timeout": 10000,
+        "retries": 3
+      },
+      "maxRestarts": 3,
+      "description": "Apache Superset rebrandado como MetaSet - Gerenciado via Docker Discovery"
+    },
+    {
+      "id": "fdb-bridge",
+      "name": "FDB Bridge",
+      "type": "python",
+      "command": "python",
+      "args": ["server/bi/fdb-bridge/main.py", "--port=8200"],
+      "cwd": ".",
+      "port": 8200,
+      "autoStart": true,
+      "env": {
+        "PYTHONPATH": "server/bi/fdb-bridge",
+        "FDB_HOST": "${FDB_HOST}",
+        "FDB_PORT": "${FDB_PORT:-3050}"
+      },
+      "healthCheck": {
+        "path": "/health",
+        "interval": 60000,
+        "timeout": 5000,
+        "retries": 3
+      },
+      "maxRestarts": 3,
+      "description": "Conector Firebird para sincronização de dados"
     },
     {
       "id": "python-automation",

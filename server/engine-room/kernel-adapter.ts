@@ -107,6 +107,89 @@ interface EngineStatus {
   responseTime?: number;
   details?: any;
   error?: string;
+  // Registry integration
+  source?: 'registry' | 'static' | 'external';
+  registryId?: string;
+  registrySource?: string;
+}
+
+// Busca serviços do Registry do Kernel
+async function fetchRegistryServices(): Promise<any[] | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch('http://localhost:5001/api/registry/services', {
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeout);
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    return data.success && Array.isArray(data.data?.services) ? data.data.services : null;
+  } catch {
+    return null;
+  }
+}
+
+// Mapeia serviço do Registry para EngineStatus
+function mapRegistryToEngine(service: any): EngineStatus {
+  const id = service.id || service.name;
+  
+  // Mapear ID do Registry para nome do Engine Room
+  const nameMap: Record<string, string> = {
+    'python-contabil': 'contabil',
+    'python-bi': 'bi-engine',
+    'python-automation': 'automation-engine',
+    'python-fisco': 'fisco',
+    'python-fiscal': 'fisco',
+    'node-communication': 'communication',
+    'miroflow-communication': 'communication',
+    'metaset-bi': 'metaset',
+    'superset-bi': 'metaset',
+  };
+  
+  const name = nameMap[id] || nameMap[service.name] || id;
+  
+  // Mapear categoria
+  const catMap: Record<string, string> = {
+    'fiscal': 'fiscal',
+    'contabil': 'fiscal',
+    'bi': 'data',
+    'data': 'data',
+    'automation': 'automation',
+    'communication': 'intelligence',
+    'intelligence': 'intelligence',
+    'erp': 'erp',
+  };
+  
+  const category = catMap[service.category] || service.category || 'data';
+  
+  // Mapear health status
+  let status: 'online' | 'offline' | 'error' = 'offline';
+  if (service.healthStatus === 'healthy') status = 'online';
+  else if (service.healthStatus === 'unhealthy') status = 'error';
+  
+  return {
+    name,
+    displayName: service.displayName || service.name,
+    type: service.type || 'unknown',
+    port: service.port || 0,
+    category,
+    description: service.description || `Serviço ${service.name}`,
+    status,
+    details: {
+      endpoint: service.endpoint,
+      health: service.healthStatus,
+      version: service.version,
+      capabilities: service.capabilities?.map((c: any) => c.name) || [],
+    },
+    source: 'registry',
+    registryId: service.id,
+    registrySource: service.metadata?.source,
+  };
 }
 
 // Health check direto de um serviço (modo Docker)
@@ -117,7 +200,7 @@ async function checkServiceHealth(engineName: string): Promise<EngineStatus> {
   const kernelId = ENGINE_TO_KERNEL_ID[engineName];
   
   // DEBUG: Log da URL sendo usada
-  console.log(`[DEBUG] checkServiceHealth(${engineName}) => URL: ${serviceUrl}, env: ${process.env.CONTABIL_PYTHON_URL || 'N/A'}`);
+  // console.log(`[DEBUG] checkServiceHealth(${engineName}) => URL: ${serviceUrl}, env: ${process.env.CONTABIL_PYTHON_URL || 'N/A'}`);
   
   if (!config || !serviceUrl) {
     return {
@@ -129,6 +212,7 @@ async function checkServiceHealth(engineName: string): Promise<EngineStatus> {
       description: `Serviço ${engineName}`,
       status: "offline",
       error: "Configuração não encontrada",
+      source: 'static' as const,
     };
   }
 

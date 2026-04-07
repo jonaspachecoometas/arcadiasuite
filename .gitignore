@@ -61,3 +61,12 @@ attached_assets/
 # Package lock (regenerated on install)
 package-lock.json
 .claude/
+
+# MetaSet - Apache Superset fork (não versionar código fonte completo)
+server/bi/metaset/superset-src/
+server/bi/metaset/venv/
+server/bi/metaset/superset
+
+# Backups gerados durante deploy
+docker-compose.yml.backup.*
+server/kernel/config/services.json.backup.*
