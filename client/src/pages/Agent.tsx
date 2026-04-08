@@ -54,13 +54,10 @@ import {
 } from "lucide-react";
 import { CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { jsPDF } from "jspdf";
-import { Document, Packer, Paragraph, TextRun } from "docx";
-import { saveAs } from "file-saver";
-import html2canvas from "html2canvas";
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
 import { ResultViewer } from "@/components/ResultViewer";
 import DevHistory from "@/components/DevHistory";
+import { ChartRenderer } from "@/components/ChartRenderer";
+import { exportToPDF, exportToWord, exportToText, exportToCSV } from "@/lib/export-utils";
 
 interface ChartData {
   type: 'bar' | 'line' | 'pie' | 'area';
