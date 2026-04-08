@@ -80,21 +80,21 @@ const ENGINES: EngineConfig[] = [
   },
   {
     name: "metaset",
-    displayName: "MetaSet (Motor BI)",
-    type: "java",
-    port: 8088,
+    displayName: "MetaSet BI",
+    type: "python",
+    port: 8100,
     healthPath: "/health",
     category: "data",
-    description: "Motor de BI - Consultas, Dashboards, Gráficos, Análises",
+    description: "MetaSet BI - Business Intelligence by ArcadiaSuite (Apache Superset fork)",
   },
 ];
 
 // Helper para obter URL de health check - considera containers externos
 function getEngineHealthUrl(engine: EngineConfig): string {
-  // MetaSet/Superset roda em container separado
+  // MetaSet roda em container separado
   if (engine.name === "metaset") {
-    const supersetHost = process.env.SUPERSET_HOST || "superset";
-    return `http://${supersetHost}:${engine.port}${engine.healthPath}`;
+    const metasetHost = process.env.METASET_HOST || "metaset";
+    return `http://${metasetHost}:${engine.port}${engine.healthPath}`;
   }
   // Plus também roda externamente (quando instalado)
   if (engine.name === "plus") {
