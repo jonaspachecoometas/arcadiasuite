@@ -6,7 +6,7 @@
 import { HealthStatus } from '../types';
 
 // Tipos de fonte de descoberta
-export type DiscoverySource = 'docker' | 'manual' | 'xos' | 'consul' | 'kubernetes';
+export type DiscoverySource = 'docker' | 'manual' | 'xos' | 'consul' | 'kubernetes' | 'coolify';
 
 // Categoria do serviço
 export type ServiceCategory = 
