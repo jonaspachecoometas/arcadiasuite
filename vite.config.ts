@@ -39,6 +39,31 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Ensure consistent hashing for caching
+        entryFileNames: "assets/[name]-[hash].js",
+        chunkFileNames: "assets/[name]-[hash].js",
+        assetFileNames: (assetInfo) => {
+          const info = assetInfo.name.split(".");
+          const ext = info[info.length - 1];
+          return `assets/[name]-[hash][extname]`;
+        },
+        // Manual chunks for better caching
+        manualChunks: {
+          // Vendor libraries that change less frequently
+          vendor: ["react", "react-dom", "wouter"],
+          // UI components
+          ui: ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu", "@radix-ui/react-tabs"],
+          // Charts (heavy)
+          charts: ["recharts"],
+          // Export libraries (heavy, loaded on demand)
+          export: ["jspdf", "docx", "html2canvas"],
+        },
+      },
+    },
+    // Generate source maps for production debugging
+    sourcemap: true,
   },
   server: {
     host: "0.0.0.0",
