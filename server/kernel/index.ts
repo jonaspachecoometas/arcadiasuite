@@ -19,6 +19,7 @@ import { ServiceRegistry } from './registry/ServiceRegistry';
 import { DockerDiscovery } from './discovery/DockerDiscovery';
 import { StaticDiscovery } from './discovery/StaticDiscovery';
 import { CoolifyDiscovery } from './discovery/CoolifyDiscovery';
+import { XOSDiscovery } from './discovery/XOSDiscovery';
 import { RegistryConfig, RegisteredService } from './registry/types';
 
 // Suporte a ESM e CommonJS (build do Docker)
@@ -110,6 +111,7 @@ export class ArcadiaKernel {
             baseUrl: 'https://coolify.onboardbi.com.br',
             token: process.env.COOLIFY_API_TOKEN || '',
           }),
+          new XOSDiscovery(), // Descoberta de serviços XOS (filas, integrações)
           new DockerDiscovery({ networkName: 'arcadia' }), // Fallback
         ],
       });
