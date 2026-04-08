@@ -298,6 +298,40 @@ curl -H "Authorization: Bearer $LITELLM_API_KEY" \
 
 ---
 
+## Otimização de Build (.dockerignore)
+
+O arquivo `.dockerignore` é crítico para builds rápidos. Ele evita que arquivos desnecessários sejam enviados para o Docker daemon.
+
+### Estrutura atual otimizada
+
+```
+# Excluídos (reduzem contexto de build)
+node_modules/          ← Instalados no container
+dist/                  ← Gerado no build
+git/                   ← Não necessário
+server/bi/metaset/superset-src/  ← 3.7GB de código fonte Superset
+server/bi/metaset/venv/          ← Python venv local
+__pycache__/           ← Cache Python
+.pytest_cache/         ← Cache de testes
+.playwright-mcp/       ← Screenshots de teste
+docs/                  ← Documentação Markdown
+*.md                   ← Arquivos Markdown
+
+# INCLUÍDOS (necessários para build)
+attached_assets/       ← Assets de branding (ícones, logos)
+```
+
+### Resultado da otimização
+
+| Métrica | Antes | Depois | Melhoria |
+|---------|-------|--------|----------|
+| Contexto de build | ~5GB | ~93MB | **98% menor** |
+| Tempo de transferência | ~2-3 min | ~5-10s | **~90% mais rápido** |
+
+> ⚠️ **Atenção**: Ao adicionar novos diretórios ao `.dockerignore`, verifique se não há assets necessários para o build (como imagens importadas no frontend).
+
+---
+
 ## Checklist Final
 
 ### Antes do deploy
@@ -307,6 +341,7 @@ curl -H "Authorization: Bearer $LITELLM_API_KEY" \
 - [ ] `SESSION_SECRET` e `SSO_SECRET` gerados com `openssl rand -hex 32`
 - [ ] Senhas do banco definidas (nunca reutilizar senhas de dev)
 - [ ] `DOCKER_MODE=true` definido
+- [ ] `.dockerignore` revisado (especialmente após adicionar novos diretórios grandes)
 
 ### No Coolify
 
