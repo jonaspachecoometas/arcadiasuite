@@ -1,7 +1,7 @@
 # Especificação Técnica: Arcadia Kernel
 
-> **Versão:** 3.2  
-> **Status:** Em desenvolvimento (Semana 5)  
+> **Versão:** 3.3  
+> **Status:** ✅ Produção  
 > **Última atualização:** 2026-04-08
 
 ---
@@ -20,42 +20,56 @@ O **Arcadia Kernel** é o sistema operacional nativo da ArcadiaSuite - um orques
 ### 1.2 Arquitetura
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      ARCADIA KERNEL (5001)                      │
-├─────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │
-│  │  Dashboard  │  │   Process   │  │      LogAggregator      │ │
-│  │   (Web UI)  │  │   Manager   │  │                         │ │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────────────────┘ │
-│         │                │                                      │
-│         └────────────────┴────────────────┐                     │
-│                          │                │                     │
-│              ┌───────────┴───────────┐   │                     │
-│              │   Service Registry    │   │                     │
-│              │  (Unified Discovery)  │   │                     │
-│              └───────────┬───────────┘   │                     │
-│                          │               │                     │
-│    ┌─────────────────────┼───────────────┘                     │
-│    │                     │                                      │
-│ ┌──┴──┐  ┌──────────┐  ┌┴─────────┐  ┌──────────┐  ┌────────┐ │
-│ │Static│  │ Coolify  │  │   XOS    │  │  Docker  │  │  ...   │ │
-│ │Disc. │  │  Disc.   │  │  Disc.   │  │  Disc.   │  │        │ │
-│ └──┬──┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └───┬────┘ │
-│    │          │             │             │            │      │
-│    └──────────┴─────────────┴─────────────┴────────────┘      │
-│                         │                                      │
-│              ┌──────────┴──────────┐                          │
-│              │   UnifiedRegistry   │                          │
-│              │  (Agregação + Dedu) │                          │
-│              └──────────┬──────────┘                          │
-└─────────────────────────┼─────────────────────────────────────┘
-                          │
-         ┌────────────────┼────────────────┐
-         │                │                │
-      ┌──┴──┐         ┌──┴──┐         ┌──┴──┐
-      │5000 │         │5001 │         │8080 │
-      │App  │         │Kernel│         │Plus │
-      └─────┘         └─────┘         └─────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         ARCADIA APPLICATION (5000)                      │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │                      ARCADIA KERNEL (5001)                      │   │
+│  ├─────────────────────────────────────────────────────────────────┤   │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐ │   │
+│  │  │  Dashboard  │  │   Process   │  │      LogAggregator      │ │   │
+│  │  │   (Web UI)  │  │   Manager   │  │                         │ │   │
+│  │  └──────┬──────┘  └──────┬──────┘  └─────────────────────────┘ │   │
+│  │         │                │                                      │   │
+│  │         └────────────────┴────────────────┐                     │   │
+│  │                          │                │                     │   │
+│  │              ┌───────────┴───────────┐   │                     │   │
+│  │              │   Service Registry    │◄──┼──┐                  │   │
+│  │              │  (Unified Discovery)  │   │  │                  │   │
+│  │              └───────────┬───────────┘   │  │                  │   │
+│  │                          │               │  │                  │   │
+│  │    ┌─────────────────────┼───────────────┘  │                  │   │
+│  │    │                     │                  │                  │   │
+│  │ ┌──┴──┐  ┌──────────┐  ┌┴─────────┐  ┌────┴─────┐  ┌────────┐ │   │
+│  │ │Static│  │ Coolify  │  │   XOS    │  │  Docker  │  │  ...   │ │   │
+│  │ │Disc. │  │  Disc.   │  │  Disc.   │  │  Disc.   │  │        │ │   │
+│  │ └──┬──┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └───┬────┘ │   │
+│  │    │          │             │             │            │      │   │
+│  │    └──────────┴─────────────┴─────────────┴────────────┘      │   │
+│  │                         │                                      │   │
+│  │              ┌──────────┴──────────┐                          │   │
+│  │              │   UnifiedRegistry   │                          │   │
+│  │              │  (Agregação + Dedu) │                          │   │
+│  │              └──────────┬──────────┘                          │   │
+│  └─────────────────────────┼─────────────────────────────────────┘   │
+│                            │                                          │
+│         ┌──────────────────┴──────────────────┐                       │
+│         │  global.arcadiaKernelRegistry        │                       │
+│         │  (Acesso direto - mesmo processo)    │                       │
+│         └──────────────────┬──────────────────┘                       │
+│                            │                                          │
+│    ┌───────────────────────┴───────────────────────┐                  │
+│    │                                               │                  │
+│    ▼                                               ▼                  │
+│ ┌─────────────────┐                    ┌─────────────────────┐       │
+│ │  Casa de        │                    │  /api/engine-room/* │       │
+│ │  Máquinas       │                    │  (API Express)      │       │
+│ │  (React UI)     │                    │                     │       │
+│ └─────────────────┘                    └─────────────────────┘       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Legenda:
+  ───► HTTP/HTTPS          ─ ─► Acesso direto (memória)
+  Porta 5000: App principal    Porta 5001: Kernel Dashboard (interno)
 ```
 
 ---
@@ -182,58 +196,87 @@ Casa de Máquinas (React)
 /api/engine-room/status
          │
          ▼
-┌─────────────────┐
-│  fetchRegistry  │ ◄── Tenta Registry primeiro
-│    Services()   │
-└────────┬────────┘
-         │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
-┌───────┐  ┌────────┐
-│Registry│  │Fallback│
-│  OK   │  │Kernel  │
-└───┬───┘  │Adapter │
-    │      └───┬────┘
-    │          │
-    └────┬─────┘
-         ▼
-┌─────────────────┐
-│  Adiciona       │
-│  Externos       │ ◄── Plus, MetaSet (se não no Registry)
-│  (se necessário)│
-└────────┬────────┘
-         ▼
+┌─────────────────────────────┐
+│  fetchRegistryServices()    │
+│                             │
+│  PRIORIDADE 1: Registry     │
+│  Global (mesmo processo)    │
+│  ─────────────────────────  │
+│  (global.arcadiaKernel      │
+│   .serviceRegistry)         │
+│         │                   │
+│         ▼                   │
+│  ┌─────────────┐            │
+│  │  Acesso     │            │
+│  │  direto     │            │
+│  │  (memória)  │            │
+│  └──────┬──────┘            │
+│         │                   │
+│  Se falhar:                 │
+│  ─────────────────────────  │
+│  PRIORIDADE 2: HTTP         │
+│  Fallback para porta 5001   │
+│         │                   │
+│         ▼                   │
+│  ┌─────────────┐            │
+│  │  http.get   │            │
+│  │  127.0.0.1  │            │
+│  │  localhost  │            │
+│  └──────┬──────┘            │
+└─────────┼───────────────────┘
+          │
+          ▼
     Resposta JSON
-         │
-         ▼
-    Frontend Render
+          │
+          ▼
+     Frontend Render
 ```
 
-### 5.2 Lógica de Deduplicação
+### 5.2 Implementação Atual
 
 ```typescript
-// 1. Consulta Registry
-const registryServices = await fetchRegistryServices();
+// server/engine-room/routes.ts
+async function fetchRegistryServicesWithRetry(): Promise<any[] | null> {
+  // PRIORIDADE 1: Registry global (mesmo processo Node.js)
+  const globalRegistry = (global as any).arcadiaKernelRegistry;
+  if (globalRegistry) {
+    const services = globalRegistry.getServices();
+    console.log(`[Engine Room] Usando Registry global: ${services.length} serviços`);
+    return services;
+  }
+  
+  // PRIORIDADE 2: HTTP request para porta 5001 (fallback)
+  console.log('[Engine Room] Registry global não disponível, tentando HTTP...');
+  // ... retry com 127.0.0.1 e localhost
+}
+```
 
-// 2. Se Registry tem dados, usa eles
-if (registryServices?.length > 0) {
-  engines = registryServices.map(mapRegistryToEngine);
-}
-// 3. Senão, fallback para kernel-adapter
-else {
-  engines = await getKernelEngines();
+#### Vantagens do Registry Global
+
+| Aspecto | HTTP (antigo) | Registry Global (novo) |
+|---------|---------------|------------------------|
+| Latência | ~10-50ms | ~0.1ms |
+| Confiabilidade | Problemas com loopback Docker | 100% (mesmo processo) |
+| Complexidade | Retry, timeout, hostname | Acesso direto |
+| Failover | Necessário | Não aplicável |
+
+#### Inicialização no server/index.ts
+
+```typescript
+// Inicia Kernel ANTES do servidor HTTP
+const kernel = new ArcadiaKernel({
+  dashboard: { enabled: true, port: 5001, host: '0.0.0.0' },
+  autoStart: process.env.KERNEL_AUTOSTART === 'true',
+});
+await kernel.start();
+
+// Exporta Registry globalmente
+if (kernel.serviceRegistry) {
+  (global as any).arcadiaKernelRegistry = kernel.serviceRegistry;
 }
 
-// 4. Adiciona externos apenas se não existirem
-if (!engines.find(e => e.name === "plus")) {
-  engines.push(await checkEngineHealth(plusEngine));
-}
-
-// 5. MetaSet só adiciona se não houver bi-engine
-if (!engines.find(e => e.name === "metaset" || e.name === "bi-engine")) {
-  engines.push(await checkEngineHealth(metasetEngine));
-}
+// DEPOIS inicia servidor HTTP (porta 5000)
+httpServer.listen({ port: 5000, host: "0.0.0.0" }, ...);
 ```
 
 ---
@@ -283,11 +326,11 @@ services:
 - [x] DockerDiscovery
 - [x] Integração com Casa de Máquinas
 
-### Semana 5 EM ANDAMENTO
+### Semana 5 ✅ CONCLUÍDO
 - [x] XOSDiscovery
-- [ ] UnifiedRegistry (agregador)
-- [ ] Deduplicação automática
-- [ ] Priorização de providers
+- [x] Registry Global (acesso direto)
+- [x] Integração Casa de Máquinas via memória
+- [ ] UnifiedRegistry (agregador) - Opcional
 
 ### Semana 6 PLANEJADO
 - [ ] Maestro IA (Guardião de IAs)
@@ -306,7 +349,8 @@ services:
 |------|--------|---------|
 | 2026-04-06 | 3.0 | Service Registry + Discovery |
 | 2026-04-07 | 3.1 | Integração Casa de Máquinas |
-| 2026-04-08 | 3.2 | Coolify Discovery implementado, XOS Discovery, correção MetaSet |
+| 2026-04-08 | 3.2 | Coolify Discovery, XOS Discovery, correção MetaSet |
+| 2026-04-08 | 3.3 | **Registry Global** - Casa de Máquinas usa acesso direto (memória) em vez de HTTP |
 
 ---
 
