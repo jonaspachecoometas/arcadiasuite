@@ -10,7 +10,23 @@ import http from "http";
 
 // Consulta Registry do Kernel para serviços descobertos
 // Usa http.get em vez de fetch por causa de problemas com loopback no Node.js
-async function fetchRegistryServices(): Promise<any[] | null> {
+// Implementa retry com backoff para maior resiliência
+async function fetchRegistryServicesWithRetry(maxRetries = 3, delay = 500): Promise<any[] | null> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const result = await fetchRegistryServicesOnce();
+    if (result !== null) {
+      return result;
+    }
+    if (attempt < maxRetries) {
+      console.log(`[Engine Room] Tentativa ${attempt} falhou, aguardando ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+      delay *= 2; // Exponential backoff
+    }
+  }
+  return null;
+}
+
+async function fetchRegistryServicesOnce(): Promise<any[] | null> {
   return new Promise((resolve) => {
     const options = {
       hostname: '127.0.0.1',
@@ -90,7 +106,7 @@ export function registerEngineRoomRoutes(app: Express): void {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      const registryServices = await fetchRegistryServices();
+      const registryServices = await fetchRegistryServicesWithRetry();
       const engines: any[] = [];
       
       if (registryServices && registryServices.length > 0) {
@@ -131,7 +147,7 @@ export function registerEngineRoomRoutes(app: Express): void {
 
   // Lista de engines - APENAS do Registry
   app.get("/api/engine-room/engines", async (_req: Request, res: Response) => {
-    const registryServices = await fetchRegistryServices();
+    const registryServices = await fetchRegistryServicesWithRetry();
     const engines = registryServices?.map(mapRegistryToEngine) || [];
     
     res.json({
@@ -233,7 +249,7 @@ export function registerEngineRoomRoutes(app: Express): void {
         return res.status(401).json({ error: "Not authenticated" });
       }
 
-      const registryServices = await fetchRegistryServices();
+      const registryServices = await fetchRegistryServicesWithRetry();
       const service = registryServices?.find((s: any) => s.id === req.params.name || s.name === req.params.name);
       
       if (!service) {
