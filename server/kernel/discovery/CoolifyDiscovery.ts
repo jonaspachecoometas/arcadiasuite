@@ -120,6 +120,7 @@ export class CoolifyDiscovery implements DiscoveryProvider {
 
   private async fetchServices(): Promise<CoolifyService[]> {
     try {
+      console.log(`[CoolifyDiscovery] Buscando serviços em ${this.options.baseUrl}/api/v1/services`);
       const response = await fetch(`${this.options.baseUrl}/api/v1/services`, {
         headers: { 
           'Authorization': `Bearer ${this.options.token}`,
@@ -127,12 +128,15 @@ export class CoolifyDiscovery implements DiscoveryProvider {
         },
       });
 
+      console.log(`[CoolifyDiscovery] Response status: ${response.status}`);
+
       if (!response.ok) {
         console.warn(`[CoolifyDiscovery] API retornou ${response.status} para /services`);
         return [];
       }
 
       const data = await response.json();
+      console.log(`[CoolifyDiscovery] Recebidos ${Array.isArray(data) ? data.length : 0} serviços`);
       return Array.isArray(data) ? data : [];
     } catch (error) {
       console.error('[CoolifyDiscovery] Erro ao buscar services:', error);
