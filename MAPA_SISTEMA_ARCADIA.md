@@ -46,15 +46,27 @@
 
 ## Mapa de Portas
 
-| Porta | Serviço | Tecnologia |
-|-------|---------|-----------|
-| 5000 | API Principal + Frontend | Express.js + React |
-| 8002 | Motor Fiscal (Fisco) | FastAPI (Python) |
-| 8003 | Motor Contábil | FastAPI (Python) |
-| 8004 | Motor BI (Insights) | FastAPI (Python) |
-| 8005 | Motor Automação | FastAPI (Python) |
-| 8006 | Motor Comunicação | Node.js/Express |
-| 8080 | Arcádia Plus (Laravel) | PHP/Laravel |
+| Porta | Serviço | Tecnologia | Observação |
+|-------|---------|-----------|------------|
+| 5000 | API Principal + Frontend | Express.js + React | Exposta publicamente |
+| 5001 | **Arcadia Kernel** | Node.js/Express | Dashboard interno (mesmo container) |
+| 8002 | Motor Fiscal (Fisco) | FastAPI (Python) | Via Docker network |
+| 8003 | Motor Contábil | FastAPI (Python) | Via Docker network |
+| 8004 | Motor BI (Insights) | FastAPI (Python) | Via Docker network |
+| 8005 | Motor Automação | FastAPI (Python) | Via Docker network |
+| 8006 | Motor Comunicação | Node.js/Express | Via Docker network |
+| 8080 | Arcádia Plus (Laravel) | PHP/Laravel | Via Docker network |
+
+### Sobre o Kernel (Porta 5001)
+
+O **Arcadia Kernel** é o sistema operacional nativo que roda **dentro do mesmo container** da aplicação principal (porta 5000). Ele não é acessível externamente, mas fornece:
+
+- **Service Registry**: Catálogo central de todos os serviços
+- **Discovery Automático**: Detecta serviços via Coolify API, Docker, DNS
+- **Health Monitoring**: Verifica saúde dos serviços periodicamente
+- **Casa de Máquinas**: Acessa o Registry via memória (não HTTP)
+
+A Casa de Máquinas (na porta 5000) consulta o Kernel via **acesso direto à memória** (`global.arcadiaKernelRegistry`), não via HTTP.
 
 ---
 
