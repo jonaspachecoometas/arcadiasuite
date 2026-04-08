@@ -68,6 +68,7 @@ services:
       COOLIFY_API_TOKEN: "${COOLIFY_API_TOKEN:-}"
     ports:
       - "5000:5000"
+      - "5001:5001"  # Kernel Arcadia (Service Discovery)
     volumes:
       - .:/app
       - /app/node_modules
