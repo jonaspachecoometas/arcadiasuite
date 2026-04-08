@@ -13,17 +13,24 @@ async function fetchRegistryServices(): Promise<any[] | null> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3000);
     
-    const response = await fetch('http://localhost:5001/api/registry/services', {
+    // Tenta 127.0.0.1 primeiro (mais confiável que localhost)
+    const response = await fetch('http://127.0.0.1:5001/api/registry/services', {
       signal: controller.signal,
     });
     
     clearTimeout(timeout);
     
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.log('[Engine Room] Registry retornou:', response.status);
+      return null;
+    }
     
     const data = await response.json();
-    return data.success && Array.isArray(data.data?.services) ? data.data.services : null;
-  } catch {
+    const services = data.success && Array.isArray(data.data?.services) ? data.data.services : null;
+    console.log(`[Engine Room] Registry retornou ${services?.length || 0} serviços`);
+    return services;
+  } catch (error) {
+    console.error('[Engine Room] Erro ao consultar Registry:', error);
     return null;
   }
 }
