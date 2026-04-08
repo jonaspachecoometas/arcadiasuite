@@ -1,5 +1,5 @@
 import { Switch, Route, useLocation } from "wouter";
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,6 +10,7 @@ import { ProtectedRoute } from "@/lib/protected-route";
 import { CommandPalette } from "@/components/CommandPalette";
 import { KnowledgeCollectorInit } from "@/components/KnowledgeCollectorInit";
 import { OpenClawWidget } from "@/components/openclaw/OpenClawWidget";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 
@@ -72,13 +73,56 @@ const XosSupervisor = lazy(() => import("@/pages/XosSupervisor"));
 const XosReports = lazy(() => import("@/pages/XosReports"));
 const XosProtocols = lazy(() => import("@/pages/XosProtocols"));
 
-
 function LoadingFallback() {
+  const [showSlowLoading, setShowSlowLoading] = useState(false);
+  const [showError, setShowError] = useState(false);
+
+  useEffect(() => {
+    // Show "slow loading" message after 3 seconds
+    const slowTimer = setTimeout(() => setShowSlowLoading(true), 3000);
+    // Show error hint after 10 seconds
+    const errorTimer = setTimeout(() => setShowError(true), 10000);
+    
+    return () => {
+      clearTimeout(slowTimer);
+      clearTimeout(errorTimer);
+    };
+  }, []);
+
   return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh" }}>
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", flexDirection: "column" }}>
       <div style={{ textAlign: "center" }}>
         <div style={{ width: 40, height: 40, border: "3px solid #e5e7eb", borderTopColor: "#3b82f6", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto" }} />
         <p style={{ marginTop: 16, color: "#6b7280" }}>Carregando...</p>
+        
+        {showSlowLoading && (
+          <p style={{ marginTop: 8, color: "#9ca3af", fontSize: 14 }}>
+            Isso está demorando mais que o esperado...
+          </p>
+        )}
+        
+        {showError && (
+          <div style={{ marginTop: 16, padding: 12, backgroundColor: "#fef3c7", borderRadius: 6, maxWidth: 300 }}>
+            <p style={{ color: "#92400e", fontSize: 13, margin: 0 }}>
+              A página pode ter um erro. Tente recarregar ou volte para a página anterior.
+            </p>
+            <button 
+              onClick={() => window.location.reload()}
+              style={{ 
+                marginTop: 8, 
+                padding: "6px 12px", 
+                backgroundColor: "#f59e0b", 
+                color: "white", 
+                border: "none", 
+                borderRadius: 4,
+                cursor: "pointer",
+                fontSize: 13
+              }}
+            >
+              Recarregar Página
+            </button>
+          </div>
+        )}
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
@@ -87,72 +131,74 @@ function LoadingFallback() {
 
 function Router() {
   return (
-    <Suspense fallback={<LoadingFallback />}>
-    <Switch>
-      <ProtectedRoute path="/" component={Cockpit} />
-      <ProtectedRoute path="/agent" component={Agent} />
-      <ProtectedRoute path="/admin" component={Admin} />
-      <ProtectedRoute path="/chat" component={Chat} />
-      <ProtectedRoute path="/whatsapp" component={WhatsApp} />
-      <ProtectedRoute path="/comunicacao" component={XosInbox} />
-      <ProtectedRoute path="/automations" component={Automations} />
-      <ProtectedRoute path="/insights" component={BiWorkspace} />
-      <ProtectedRoute path="/compass" component={ProcessCompass} />
-      <ProtectedRoute path="/crm" component={Crm} />
-      <ProtectedRoute path="/production" component={Production} />
-      <ProtectedRoute path="/support" component={Support} />
-      <ProtectedRoute path="/valuation" component={Valuation} />
-      <ProtectedRoute path="/canvas" component={Canvas} />
-      <ProtectedRoute path="/ide" component={IDE} />
-      <ProtectedRoute path="/scientist" component={Scientist} />
-      <ProtectedRoute path="/knowledge" component={Knowledge} />
-      <ProtectedRoute path="/central-apis" component={CentralApis} />
-      <ProtectedRoute path="/api-tester" component={ApiTesterPage} />
-      <ProtectedRoute path="/api-hub" component={ApiHub} />
-      <ProtectedRoute path="/fisco" component={Fisco} />
-      <ProtectedRoute path="/people" component={People} />
-      <ProtectedRoute path="/contabil" component={Contabil} />
-      <ProtectedRoute path="/soe" component={SOE} />
-      <ProtectedRoute path="/erp" component={SOE} />
-      <ProtectedRoute path="/financeiro" component={Financeiro} />
-      <ProtectedRoute path="/communities" component={Communities} />
-      <ProtectedRoute path="/quality" component={QualityModule} />
-      <ProtectedRoute path="/commercial-env" component={CommercialEnv} />
-      <ProtectedRoute path="/field-ops" component={FieldOperations} />
-      <ProtectedRoute path="/technical" component={TechnicalModule} />
-      <ProtectedRoute path="/suppliers" component={SuppliersPortal} />
-      <ProtectedRoute path="/nps" component={NPSSurvey} />
-      <ProtectedRoute path="/engineering" component={EngineeringHub} />
-      <ProtectedRoute path="/development" component={DevelopmentModule} />
-      <ProtectedRoute path="/retail" component={ArcadiaRetail} />
-      <ProtectedRoute path="/plus" component={() => { const [, nav] = useLocation(); useEffect(() => nav("/soe"), []); return null; }} />
-      <ProtectedRoute path="/super-admin" component={SuperAdmin} />
-      <ProtectedRoute path="/marketplace" component={Marketplace} />
-      <ProtectedRoute path="/lms" component={LMS} />
-      <ProtectedRoute path="/apps" component={AppCenter} />
-      <ProtectedRoute path="/xos" component={XosCentral} />
-      <ProtectedRoute path="/xos/crm" component={XosCrm} />
-      <ProtectedRoute path="/xos/inbox" component={XosInbox} />
-      <ProtectedRoute path="/xos/tickets" component={XosTickets} />
-      <ProtectedRoute path="/xos/campaigns" component={XosCampaigns} />
-      <ProtectedRoute path="/xos/automations" component={XosAutomations} />
-      <ProtectedRoute path="/xos/sites" component={XosSites} />
-      <ProtectedRoute path="/xos/governance" component={XosGovernance} />
-      <ProtectedRoute path="/xos/pipeline" component={XosPipeline} />
-      <ProtectedRoute path="/xos/supervisor" component={XosSupervisor} />
-      <ProtectedRoute path="/xos/reports" component={XosReports} />
-      <ProtectedRoute path="/xos/protocols" component={XosProtocols} />
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingFallback />}>
+        <Switch>
+          <ProtectedRoute path="/" component={Cockpit} />
+          <ProtectedRoute path="/agent" component={Agent} />
+          <ProtectedRoute path="/admin" component={Admin} />
+          <ProtectedRoute path="/chat" component={Chat} />
+          <ProtectedRoute path="/whatsapp" component={WhatsApp} />
+          <ProtectedRoute path="/comunicacao" component={XosInbox} />
+          <ProtectedRoute path="/automations" component={Automations} />
+          <ProtectedRoute path="/insights" component={BiWorkspace} />
+          <ProtectedRoute path="/compass" component={ProcessCompass} />
+          <ProtectedRoute path="/crm" component={Crm} />
+          <ProtectedRoute path="/production" component={Production} />
+          <ProtectedRoute path="/support" component={Support} />
+          <ProtectedRoute path="/valuation" component={Valuation} />
+          <ProtectedRoute path="/canvas" component={Canvas} />
+          <ProtectedRoute path="/ide" component={IDE} />
+          <ProtectedRoute path="/scientist" component={Scientist} />
+          <ProtectedRoute path="/knowledge" component={Knowledge} />
+          <ProtectedRoute path="/central-apis" component={CentralApis} />
+          <ProtectedRoute path="/api-tester" component={ApiTesterPage} />
+          <ProtectedRoute path="/api-hub" component={ApiHub} />
+          <ProtectedRoute path="/fisco" component={Fisco} />
+          <ProtectedRoute path="/people" component={People} />
+          <ProtectedRoute path="/contabil" component={Contabil} />
+          <ProtectedRoute path="/soe" component={SOE} />
+          <ProtectedRoute path="/erp" component={SOE} />
+          <ProtectedRoute path="/financeiro" component={Financeiro} />
+          <ProtectedRoute path="/communities" component={Communities} />
+          <ProtectedRoute path="/quality" component={QualityModule} />
+          <ProtectedRoute path="/commercial-env" component={CommercialEnv} />
+          <ProtectedRoute path="/field-ops" component={FieldOperations} />
+          <ProtectedRoute path="/technical" component={TechnicalModule} />
+          <ProtectedRoute path="/suppliers" component={SuppliersPortal} />
+          <ProtectedRoute path="/nps" component={NPSSurvey} />
+          <ProtectedRoute path="/engineering" component={EngineeringHub} />
+          <ProtectedRoute path="/development" component={DevelopmentModule} />
+          <ProtectedRoute path="/retail" component={ArcadiaRetail} />
+          <ProtectedRoute path="/plus" component={() => { const [, nav] = useLocation(); useEffect(() => nav("/soe"), []); return null; }} />
+          <ProtectedRoute path="/super-admin" component={SuperAdmin} />
+          <ProtectedRoute path="/marketplace" component={Marketplace} />
+          <ProtectedRoute path="/lms" component={LMS} />
+          <ProtectedRoute path="/apps" component={AppCenter} />
+          <ProtectedRoute path="/xos" component={XosCentral} />
+          <ProtectedRoute path="/xos/crm" component={XosCrm} />
+          <ProtectedRoute path="/xos/inbox" component={XosInbox} />
+          <ProtectedRoute path="/xos/tickets" component={XosTickets} />
+          <ProtectedRoute path="/xos/campaigns" component={XosCampaigns} />
+          <ProtectedRoute path="/xos/automations" component={XosAutomations} />
+          <ProtectedRoute path="/xos/sites" component={XosSites} />
+          <ProtectedRoute path="/xos/governance" component={XosGovernance} />
+          <ProtectedRoute path="/xos/pipeline" component={XosPipeline} />
+          <ProtectedRoute path="/xos/supervisor" component={XosSupervisor} />
+          <ProtectedRoute path="/xos/reports" component={XosReports} />
+          <ProtectedRoute path="/xos/protocols" component={XosProtocols} />
 
-      <ProtectedRoute path="/doctype-builder" component={DocTypeBuilder} />
-      <ProtectedRoute path="/page-builder" component={PageBuilder} />
-      <ProtectedRoute path="/migration" component={Migration} />
-      <ProtectedRoute path="/dev-center" component={DevCenter} />
-      <ProtectedRoute path="/page/:id" component={WorkspacePage} />
-      <ProtectedRoute path="/app/:id" component={AppViewer} />
-      <Route path="/auth" component={AuthPage} />
-      <Route component={NotFound} />
-    </Switch>
-    </Suspense>
+          <ProtectedRoute path="/doctype-builder" component={DocTypeBuilder} />
+          <ProtectedRoute path="/page-builder" component={PageBuilder} />
+          <ProtectedRoute path="/migration" component={Migration} />
+          <ProtectedRoute path="/dev-center" component={DevCenter} />
+          <ProtectedRoute path="/page/:id" component={WorkspacePage} />
+          <ProtectedRoute path="/app/:id" component={AppViewer} />
+          <Route path="/auth" component={AuthPage} />
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

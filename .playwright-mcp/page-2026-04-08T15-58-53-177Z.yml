@@ -1,0 +1,28 @@
+- generic [ref=e2]:
+  - region "Notifications (F8)":
+    - list
+  - generic [ref=e5]:
+    - generic [ref=e6]:
+      - img "Arcadia" [ref=e7]
+      - heading "Arcádia Suite" [level=1] [ref=e8]
+    - generic [ref=e9]:
+      - tablist [ref=e10]:
+        - tab "Login" [selected] [ref=e11]
+        - tab "Criar Conta" [ref=e12]
+      - tabpanel "Login" [ref=e13]:
+        - generic [ref=e14]:
+          - generic [ref=e15]:
+            - generic [ref=e16]: Bem-vindo de volta
+            - generic [ref=e17]: Entre com suas credenciais para acessar o sistema
+          - generic [ref=e19]:
+            - generic [ref=e20]:
+              - text: Usuário
+              - textbox "Usuário" [ref=e21]:
+                - /placeholder: Digite seu usuário
+                - text: admin
+            - generic [ref=e22]:
+              - text: Senha
+              - textbox "Senha" [ref=e23]:
+                - /placeholder: Digite sua senha
+                - text: admin
+            - button "Entrar" [ref=e24]
