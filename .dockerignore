@@ -41,7 +41,7 @@ coverage/
 # Docker
 .docker/
 
-# Outros
+# Outros - exceto attached_assets que são necessários
 *.md
+!attached_assets/
 docs/
-attached_assets/
