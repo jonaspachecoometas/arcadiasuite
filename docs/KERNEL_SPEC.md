@@ -312,7 +312,7 @@ services:
       - "arcadia.type=python"
       - "arcadia.category=bi"
       - "arcadia.port=8100"
-      - "arcadia.capabilities=dashboards,charts,sql_lab"
+      - "arcadia.capabilities=dashboards,charts,sql_lab,rls,embedding"
 ```
 
 ---
@@ -351,6 +351,7 @@ services:
 | 2026-04-07 | 3.1 | Integração Casa de Máquinas |
 | 2026-04-08 | 3.2 | Coolify Discovery, XOS Discovery, correção MetaSet |
 | 2026-04-08 | 3.3 | **Registry Global** - Casa de Máquinas usa acesso direto (memória) em vez de HTTP |
+| 2026-04-08 | 3.4 | **MetaSet Consolidado** - Migração Metabase → Apache Superset 4.1.0 |
 
 ---
 

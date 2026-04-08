@@ -1,20 +1,20 @@
 # Arcádia BI — Mapa de Business Intelligence
 
-> Mapa completo da arquitetura de BI, incluindo Motor Python, Metabase,
+> Mapa completo da arquitetura de BI, incluindo Motor Python, MetaSet (Apache Superset),
 > Cientista (IA), ETL/Staging, APIs e Frontend.
-> Atualizado em: Março 2026
+> Atualizado em: Abril 2026
 
 ---
 
 ## 1. Visão Geral
 
-O BI da Arcádia Suite opera em **4 camadas complementares** que se combinam para oferecer analytics completo: desde queries SQL diretas até dashboards visuais no Metabase, passando por análise com IA e ingestão de dados externos.
+O BI da Arcádia Suite opera em **4 camadas complementares** que se combinam para oferecer analytics completo: desde queries SQL diretas até dashboards visuais no MetaSet (Apache Superset), passando por análise com IA e ingestão de dados externos.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        USUÁRIO / FRONTEND                            │
 │                                                                      │
-│   BiWorkspace.tsx (2.970 linhas)          Metabase (Embeddado)      │
+│   BiWorkspace.tsx (2.970 linhas)          MetaSet (Embeddado)       │
 │   React + Recharts + Tailwind             Proxy → :8088              │
 │   8 abas funcionais                       Dashboards avançados       │
 │                                                                      │
@@ -35,8 +35,8 @@ O BI da Arcádia Suite opera em **4 camadas complementares** que se combinam par
           │               │                       │
           ▼               ▼                       ▼
 ┌─────────────────┐ ┌──────────────────┐ ┌─────────────────────┐
-│  API BI (Node)  │ │BI Engine (Python)│ │ Metabase (Java)     │
-│  /api/bi/*      │ │ /api/bi-engine/* │ │ /metabase/*         │
+│  API BI (Node)  │ │BI Engine (Python)│ │ MetaSet (Python)    │
+│  /api/bi/*      │ │ /api/bi-engine/* │ │ /bi/metaset/*      │
 │                 │ │                  │ │                     │
 │ CRUD:           │ │ SQL Execution    │ │ Dashboards          │
 │ - DataSources   │ │ Chart Data Gen   │ │ Perguntas/Queries   │
@@ -112,25 +112,25 @@ O coração analítico. Processa SQL, gera dados para gráficos e fornece Micro-
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Pilar 2 — Metabase (Java :8088)
+### Pilar 2 — MetaSet (Apache Superset :8100)
 
-Plataforma visual de BI, acessível via proxy reverso.
+Plataforma visual de BI baseada em Apache Superset 4.1.0, acessível via proxy reverso.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      METABASE                                │
-│               Porta: 8088 (via proxy /metabase)              │
+│                      METASET (SUPERSET)                      │
+│               Porta: 8100 (via proxy /bi/metaset)            │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐   │
 │  │ PROXY (http-proxy-middleware)                         │   │
 │  │                                                       │   │
-│  │ Gateway (:5000) → /metabase/* → Metabase (:8088)     │   │
+│  │ Gateway (:5000) → /bi/metaset/* → MetaSet (:8100)    │   │
 │  │                                                       │   │
-│  │ • pathRewrite: /metabase → /                         │   │
+│  │ • pathRewrite: /bi/metaset → /                      │   │
 │  │ • changeOrigin: true                                  │   │
 │  │ • timeout: 60 segundos                                │   │
 │  │ • Reescrita de Location headers                      │   │
-│  │ • Fallback: 502 "Metabase indisponível"             │   │
+│  │ • Fallback: 502 "MetaSet indisponível"              │   │
 │  └──────────────────────────────────────────────────────┘   │
 │                                                              │
 │  ┌──────────────────────────────────────────────────────┐   │
@@ -356,11 +356,11 @@ Formatos suportados (até 200MB):
 | POST | `/api/staging/tables/:id/migrate` | Executa migração para tabela destino |
 | DELETE | `/api/staging/tables/:id` | Remove tabela staged |
 
-### 3.4 — Metabase Proxy (/metabase/*)
+### 3.4 — MetaSet Proxy (/metaset/*)
 
 | Rota | Destino | Função |
 |------|---------|--------|
-| `/metabase/*` | `http://localhost:8088/*` | Proxy reverso completo para Metabase |
+| `/metaset/*` | `http://localhost:8088/*` | Proxy reverso completo para MetaSet |
 
 ---
 
@@ -453,7 +453,7 @@ Formatos suportados (até 200MB):
 | **Charts** | `charts` | Criação de gráficos (8 tipos) a partir de datasets, com visualização Recharts |
 | **Backups** | `backups` | Jobs de backup com execução e artefatos gerados |
 | **Staging** | `staging` | Área de preparação: mapeamento de colunas, migração para tabelas destino |
-| **Advanced** | `advanced` | BI Engine (link para Motor Python), Metabase (link para iframe), Assistente IA |
+| **Advanced** | `advanced` | BI Engine (link para Motor Python), MetaSet (link para iframe), Assistente IA |
 
 ### Tipos de Gráficos Suportados (Recharts)
 
@@ -668,7 +668,7 @@ Arquivo (CSV/Excel/JSON/SQL/BSON/ZIP)
 │                                      │
 │  • Dataset pronto para visualização  │
 │  • Pode criar charts e dashboards    │
-│  • Conecta com BI Engine e Metabase  │
+│  • Conecta com BI Engine e MetaSet  │
 └──────────────────────────────────────┘
 ```
 
@@ -691,7 +691,7 @@ Arquivo (CSV/Excel/JSON/SQL/BSON/ZIP)
 │                                    └─────┬──────┘   └──────────┘   │
 │                                          │                          │
 │  ┌──────────┐                      ┌─────▼──────┐                  │
-│  │ Tabelas  │─────────────────────▶│  Metabase  │                  │
+│  │ Tabelas  │─────────────────────▶│  MetaSet  │                  │
 │  │ Internas │                      │  (Visual)  │                  │
 │  │  (PG)    │                      └──────┬─────┘                  │
 │  └──────────┘                             │                         │
@@ -712,7 +712,7 @@ Arquivo (CSV/Excel/JSON/SQL/BSON/ZIP)
 | Dataset | BI Engine | SQL do dataset executado no Motor Python |
 | Dataset | Chart | Chart referencia datasetId |
 | Chart | Dashboard | `bi_dashboard_charts` com posição (X,Y,W,H) |
-| Tabelas PG | Metabase | Conexão direta ao PostgreSQL |
+| Tabelas PG | MetaSet | Conexão direta ao PostgreSQL |
 | Dataset | Assistente IA | Dados enviados como contexto ao GPT-4o |
 | Dados | Cientista | `analyze_data()`, `detect_patterns()`, `generate_insights()` |
 
@@ -726,9 +726,9 @@ Arquivo (CSV/Excel/JSON/SQL/BSON/ZIP)
 | `BI_ENGINE_HOST` | `localhost` | Engine Proxy | Host do motor Python |
 | `BI_PORT` | `8004` | BI Engine, Proxy | Porta do motor Python |
 | `BI_ENGINE_TIMEOUT` | `30000` | Engine Proxy | Timeout de proxy (ms) |
-| `METABASE_HOST` | `localhost` | Metabase Proxy | Host do Metabase |
-| `METABASE_PORT` | `8088` | Metabase Proxy | Porta do Metabase |
-| `METABASE_TIMEOUT` | `60000` | Metabase Proxy | Timeout do proxy (ms) |
+| `METASET_HOST` | `metaset` | MetaSet Proxy | Host do MetaSet |
+| `METASET_PORT` | `8100` | MetaSet Proxy | Porta do MetaSet |
+| `METASET_TIMEOUT` | `30000` | MetaSet Proxy | Timeout do proxy (ms) |
 | `OPENAI_API_KEY` | - | Assistente BI | API key para GPT-4o |
 
 ---
@@ -742,9 +742,10 @@ Arquivo (CSV/Excel/JSON/SQL/BSON/ZIP)
 | `server/bi/engine-proxy.ts` | Proxy | Proxy Gateway → BI Engine Python (:8004) | ~200 |
 | `server/bi/upload.ts` | ETL | Upload de arquivos (CSV, Excel, JSON, SQL, BSON, ZIP) | ~1.060 |
 | `server/bi/staging.ts` | ETL | Staging, mapeamento, migração de dados | ~408 |
-| `server/metabase/proxy.ts` | Proxy | Proxy Gateway → Metabase (:8088) | ~42 |
+| `server/bi/metaset-client/routes.ts` | Proxy | Proxy Gateway → MetaSet (:8100) | ~215 |
 | `client/src/pages/BiWorkspace.tsx` | Frontend | Interface principal do BI (8 tabs) | ~2.970 |
-| `client/src/pages/MetabaseProxyPage.tsx` | Frontend | Página do Metabase embeddado | ~25 |
+| `server/bi/metaset-client/index.ts` | Cliente | Cliente TypeScript para API Superset | ~375 |
+| `client/src/pages/MetaSetProxyPage.tsx` | Frontend | Página do MetaSet embeddado | ~25 |
 | `python-service/services/cientista.py` | IA/ML | Análise, padrões, insights, auto-programação | ~567 |
 | `shared/schema.ts` | Schema | Tabelas BI (9 tabelas) | Parte do schema |
 
@@ -763,17 +764,17 @@ EXPOSE 8004
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8004"]
 ```
 
-### Container `metabase`
+### Container `metaset`
 
 ```yaml
-metabase:
-  image: metabase/metabase:latest
+metaset:
+  image: metaset/metaset:latest
   restart: always
   ports:
     - "8088:3000"
   environment:
     MB_DB_TYPE: postgres
-    MB_DB_DBNAME: metabase
+    MB_DB_DBNAME: metaset
     MB_DB_PORT: 5432
     MB_DB_USER: ${PGUSER:-arcadia}
     MB_DB_PASS: ${PGPASSWORD}
@@ -783,7 +784,7 @@ metabase:
     postgres:
       condition: service_healthy
   volumes:
-    - metabase-data:/metabase-data
+    - metaset-data:/metaset-data
   networks:
     - arcadia
 ```
@@ -795,7 +796,7 @@ gateway:
   environment:
     BI_ENGINE_HOST: bi
     BI_PORT: 8004
-    METABASE_HOST: metabase
+    METABASE_HOST: metaset
     METABASE_PORT: 3000
 ```
 
@@ -814,7 +815,7 @@ gateway:
 │          ┌─────────────────────┼─────────────────────┐              │
 │          │                     │                     │              │
 │   ┌──────▼──────┐    ┌────────▼────────┐   ┌────────▼────────┐     │
-│   │  API BI     │    │  BI Engine      │   │    Metabase     │     │
+│   │  API BI     │    │  BI Engine      │   │    MetaSet     │     │
 │   │  (Node.js)  │    │  (Python:8004)  │   │    (Java:8088)  │     │
 │   │             │    │                 │   │                 │     │
 │   │ CRUD        │    │ SQL + Charts    │   │ Dashboards      │     │
