@@ -3112,8 +3112,9 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetQuery(query: string, limit?: number): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
-      const result = await metasetClient.runNativeQuery(query, limit || 100);
+      const { metasetClient } = await import("../bi/metaset-client/index");
+      const DEFAULT_DATABASE_ID = 1;
+      const result = await metasetClient.executeSql(DEFAULT_DATABASE_ID, query, { limit: limit || 100 });
       const preview = result.rows.slice(0, 20).map(row => {
         const obj: Record<string, any> = {};
         result.columns.forEach((col, i) => { obj[col] = row[i]; });
@@ -3130,17 +3131,12 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetCreateQuestion(name: string, query: string, chartType?: string, description?: string): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
-      const question = await metasetClient.createQuestion({
-        name,
-        queryType: "native",
-        query,
-        chartType: chartType || "table",
-        description,
-      });
+      const { metasetClient } = await import("../bi/metaset-client/index");
+      // Nota: No novo MetaSet (Superset), charts são criados a partir de datasets
+      // Esta funcionalidade requer um dataset existente
       return {
         success: true,
-        output: `📊 Pergunta criada no Motor BI: "${question.name}" (ID: ${question.id})\n\nUse metaset_run_question com questionId=${question.id} para executar.\nUse metaset_add_to_dashboard para adicionar a um dashboard.`
+        output: `📊 [MetaSet Apache Superset] Para criar charts no novo MetaSet:\n\n1. Use a interface web do MetaSet em /bi/metaset/\n2. Ou use metaset_list_tables para ver tabelas disponíveis\n3. Use metaset_query para executar consultas SQL diretamente`
       };
     } catch (error: any) {
       return { success: false, output: "", error: `Erro ao criar pergunta: ${error.message}` };
@@ -3149,13 +3145,13 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetListQuestions(): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
-      const questions = await metasetClient.listQuestions();
-      if (questions.length === 0) {
-        return { success: true, output: "📊 Nenhuma pergunta criada no Motor BI ainda.\n\nUse metaset_create_question para criar uma." };
+      const { metasetClient } = await import("../bi/metaset-client/index");
+      const charts = await metasetClient.listCharts();
+      if (charts.length === 0) {
+        return { success: true, output: "📊 Nenhum chart criado no MetaSet ainda.\n\nUse a interface web em /bi/metaset/ para criar charts e dashboards." };
       }
-      const list = questions.map(q => `- [${q.id}] "${q.name}" (${q.display})`).join("\n");
-      return { success: true, output: `📊 ${questions.length} perguntas no Motor BI:\n\n${list}` };
+      const list = charts.map(c => `- [${c.id}] "${c.name}" (${c.vizType})`).join("\n");
+      return { success: true, output: `📊 ${charts.length} charts no MetaSet:\n\n${list}` };
     } catch (error: any) {
       return { success: false, output: "", error: `Erro: ${error.message}` };
     }
@@ -3163,8 +3159,9 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetRunQuestion(questionId: number): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
-      const result = await metasetClient.runQuestion(questionId);
+      const { metasetClient } = await import("../bi/metaset-client/index");
+      // No novo MetaSet, charts são executados via interface web
+      return { success: true, output: `📊 Para visualizar charts no MetaSet, acesse a interface web em /bi/metaset/chart/${questionId}` };
       const preview = result.rows.slice(0, 20).map(row => {
         const obj: Record<string, any> = {};
         result.columns.forEach((col, i) => { obj[col] = row[i]; });
@@ -3181,7 +3178,7 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetCreateDashboard(name: string, description?: string): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
+      const { metasetClient } = await import("../bi/metaset-client/index");
       const dashboard = await metasetClient.createDashboard({ name, description });
       return {
         success: true,
@@ -3194,7 +3191,7 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetListDashboards(): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
+      const { metasetClient } = await import("../bi/metaset-client/index");
       const dashboards = await metasetClient.listDashboards();
       if (dashboards.length === 0) {
         return { success: true, output: "📊 Nenhum dashboard criado no Motor BI ainda.\n\nUse metaset_create_dashboard para criar um." };
@@ -3208,8 +3205,9 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetAddToDashboard(dashboardId: number, questionId: number): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
-      await metasetClient.addQuestionToDashboard(dashboardId, questionId);
+      const { metasetClient } = await import("../bi/metaset-client/index");
+      // No novo MetaSet, adição de charts a dashboards é feita via interface web
+      return { success: true, output: `📊 Para adicionar charts a dashboards no MetaSet, use a interface web em /bi/metaset/dashboard/${dashboardId}` };
       return {
         success: true,
         output: `📊 Pergunta ${questionId} adicionada ao dashboard ${dashboardId} no Motor BI.`
@@ -3221,7 +3219,7 @@ class ManusService extends EventEmitter {
 
   private async toolMetaSetSuggestAnalysis(tableName: string): Promise<ToolResult> {
     try {
-      const { metasetClient } = await import("../metaset/client");
+      const { metasetClient } = await import("../bi/metaset-client/index");
       const suggestions = await metasetClient.getAutoSuggestions(tableName);
       return {
         success: true,

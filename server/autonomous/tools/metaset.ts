@@ -1,5 +1,15 @@
+/**
+ * MetaSet Tools - Ferramentas de BI para Agentes Autônomos
+ * Arcádia Suite
+ * 
+ * Integração com Apache Superset via novo cliente em /server/bi/metaset-client/
+ */
+
 import { BaseTool, ToolParameter, ToolResult } from "./BaseTool";
-import { metasetClient } from "../../metaset/client";
+import { metasetClient } from "../../bi/metaset-client/index";
+
+// Database ID padrão do Arcádia (deve ser configurado no MetaSet)
+const DEFAULT_DATABASE_ID = 1;
 
 export class MetaSetQueryTool extends BaseTool {
   name = "metaset.query";
@@ -12,7 +22,9 @@ export class MetaSetQueryTool extends BaseTool {
 
   async execute(params: Record<string, any>): Promise<ToolResult> {
     try {
-      const result = await metasetClient.runNativeQuery(params.query, params.limit || 100);
+      const result = await metasetClient.executeSql(DEFAULT_DATABASE_ID, params.query, { 
+        limit: params.limit || 100 
+      });
       const preview = result.rows.slice(0, 20).map(row => {
         const obj: Record<string, any> = {};
         result.columns.forEach((col, i) => { obj[col] = row[i]; });
@@ -36,7 +48,7 @@ export class MetaSetListTablesTool extends BaseTool {
 
   async execute(): Promise<ToolResult> {
     try {
-      const tables = await metasetClient.getTables();
+      const tables = await metasetClient.getDatabaseTables(DEFAULT_DATABASE_ID);
       const summary = tables.map(t => `- ${t.name} (${t.schema})`).join("\n");
       return this.formatSuccess(
         `${tables.length} tabelas disponíveis:\n${summary}`,
@@ -58,8 +70,9 @@ export class MetaSetTableFieldsTool extends BaseTool {
 
   async execute(params: Record<string, any>): Promise<ToolResult> {
     try {
-      const fields = await metasetClient.getTableFields(params.tableId);
-      const summary = fields.map(f => `- ${f.name} (${f.type})`).join("\n");
+      const metadata = await metasetClient.getTableMetadata(params.tableId);
+      const fields = metadata.result?.columns || [];
+      const summary = fields.map((f: any) => `- ${f.column_name} (${f.type})`).join("\n");
       return this.formatSuccess(
         `${fields.length} colunas:\n${summary}`,
         fields
@@ -70,85 +83,58 @@ export class MetaSetTableFieldsTool extends BaseTool {
   }
 }
 
-export class MetaSetCreateQuestionTool extends BaseTool {
-  name = "metaset.create_question";
-  description = "Cria uma pergunta/consulta persistente no motor de BI. A pergunta fica salva e pode ser adicionada a dashboards.";
+export class MetaSetCreateChartTool extends BaseTool {
+  name = "metaset.create_chart";
+  description = "Cria um gráfico/chart no motor de BI. O chart fica salvo e pode ser adicionado a dashboards.";
   category = "bi";
   parameters: ToolParameter[] = [
-    { name: "name", type: "string", description: "Nome da pergunta/consulta", required: true },
-    { name: "query", type: "string", description: "Consulta SQL da pergunta", required: true },
-    { name: "chartType", type: "string", description: "Tipo de visualização: table, bar, line, pie, area, scatter, row, scalar", required: false },
-    { name: "description", type: "string", description: "Descrição da pergunta", required: false },
+    { name: "name", type: "string", description: "Nome do gráfico", required: true },
+    { name: "datasetId", type: "number", description: "ID do dataset/tabela", required: true },
+    { name: "vizType", type: "string", description: "Tipo: table, bar, line, pie, area, scatter", required: true },
+    { name: "params", type: "object", description: "Parâmetros de visualização", required: false },
   ];
 
   async execute(params: Record<string, any>): Promise<ToolResult> {
     try {
-      const question = await metasetClient.createQuestion({
+      const chart = await metasetClient.createChart({
         name: params.name,
-        description: params.description,
-        queryType: "native",
-        query: params.query,
-        chartType: params.chartType || "table",
+        datasetId: params.datasetId,
+        vizType: params.vizType,
+        params: params.params || {},
       });
       return this.formatSuccess(
-        `Pergunta criada: "${question.name}" (ID: ${question.id}). Use metaset.run_question para executar ou metaset.add_to_dashboard para adicionar a um dashboard.`,
-        question
+        `Gráfico criado: "${chart.name}" (ID: ${chart.id}). Use metaset.add_to_dashboard para adicionar a um dashboard.`,
+        chart
       );
     } catch (err: any) {
-      return this.formatError(`Erro ao criar pergunta: ${err.message}`);
+      return this.formatError(`Erro ao criar gráfico: ${err.message}`);
     }
   }
 }
 
-export class MetaSetRunQuestionTool extends BaseTool {
-  name = "metaset.run_question";
-  description = "Executa uma pergunta salva no motor de BI e retorna os resultados atualizados.";
-  category = "bi";
-  parameters: ToolParameter[] = [
-    { name: "questionId", type: "number", description: "ID da pergunta a executar", required: true },
-  ];
-
-  async execute(params: Record<string, any>): Promise<ToolResult> {
-    try {
-      const result = await metasetClient.runQuestion(params.questionId);
-      const preview = result.rows.slice(0, 20).map(row => {
-        const obj: Record<string, any> = {};
-        result.columns.forEach((col, i) => { obj[col] = row[i]; });
-        return obj;
-      });
-      return this.formatSuccess(
-        `Resultados: ${result.rowCount} linhas\nColunas: ${result.columns.join(", ")}\n\n${JSON.stringify(preview, null, 2)}`,
-        { columns: result.columns, rows: result.rows, rowCount: result.rowCount }
-      );
-    } catch (err: any) {
-      return this.formatError(`Erro ao executar pergunta: ${err.message}`);
-    }
-  }
-}
-
-export class MetaSetListQuestionsTool extends BaseTool {
-  name = "metaset.list_questions";
-  description = "Lista todas as perguntas/consultas salvas no motor de BI.";
+export class MetaSetListChartsTool extends BaseTool {
+  name = "metaset.list_charts";
+  description = "Lista todos os gráficos/charts salvos no motor de BI.";
   category = "bi";
   parameters: ToolParameter[] = [];
 
   async execute(): Promise<ToolResult> {
     try {
-      const questions = await metasetClient.listQuestions();
-      if (questions.length === 0) {
-        return this.formatSuccess("Nenhuma pergunta criada ainda. Use metaset.create_question para criar.", []);
+      const charts = await metasetClient.listCharts();
+      if (charts.length === 0) {
+        return this.formatSuccess("Nenhum gráfico criado ainda. Use metaset.create_chart para criar.", []);
       }
-      const summary = questions.map(q => `- [${q.id}] "${q.name}" (${q.display}) - ${q.description || "sem descrição"}`).join("\n");
-      return this.formatSuccess(`${questions.length} perguntas:\n${summary}`, questions);
+      const summary = charts.map(c => `- [${c.id}] "${c.name}" (${c.vizType}) - ${c.description || "sem descrição"}`).join("\n");
+      return this.formatSuccess(`${charts.length} gráficos:\n${summary}`, charts);
     } catch (err: any) {
-      return this.formatError(`Erro ao listar perguntas: ${err.message}`);
+      return this.formatError(`Erro ao listar gráficos: ${err.message}`);
     }
   }
 }
 
 export class MetaSetCreateDashboardTool extends BaseTool {
   name = "metaset.create_dashboard";
-  description = "Cria um novo dashboard no motor de BI para organizar perguntas e gráficos.";
+  description = "Cria um novo dashboard no motor de BI para organizar gráficos.";
   category = "bi";
   parameters: ToolParameter[] = [
     { name: "name", type: "string", description: "Nome do dashboard", required: true },
@@ -162,7 +148,7 @@ export class MetaSetCreateDashboardTool extends BaseTool {
         description: params.description,
       });
       return this.formatSuccess(
-        `Dashboard criado: "${dashboard.name}" (ID: ${dashboard.id}). Use metaset.add_to_dashboard para adicionar perguntas.`,
+        `Dashboard criado: "${dashboard.name}" (ID: ${dashboard.id}).`,
         dashboard
       );
     } catch (err: any) {
@@ -191,36 +177,23 @@ export class MetaSetListDashboardsTool extends BaseTool {
   }
 }
 
-export class MetaSetAddToDashboardTool extends BaseTool {
-  name = "metaset.add_to_dashboard";
-  description = "Adiciona uma pergunta/gráfico a um dashboard existente.";
+export class MetaSetGetDashboardTool extends BaseTool {
+  name = "metaset.get_dashboard";
+  description = "Obtém detalhes de um dashboard específico.";
   category = "bi";
   parameters: ToolParameter[] = [
     { name: "dashboardId", type: "number", description: "ID do dashboard", required: true },
-    { name: "questionId", type: "number", description: "ID da pergunta a adicionar", required: true },
-    { name: "x", type: "number", description: "Posição X no grid (padrão: 0)", required: false },
-    { name: "y", type: "number", description: "Posição Y no grid (padrão: 0)", required: false },
-    { name: "width", type: "number", description: "Largura no grid (padrão: 6)", required: false },
-    { name: "height", type: "number", description: "Altura no grid (padrão: 4)", required: false },
   ];
 
   async execute(params: Record<string, any>): Promise<ToolResult> {
     try {
-      await metasetClient.addQuestionToDashboard(
-        params.dashboardId,
-        params.questionId,
-        {
-          x: params.x || 0,
-          y: params.y || 0,
-          w: params.width || 6,
-          h: params.height || 4,
-        }
-      );
+      const dashboard = await metasetClient.getDashboard(params.dashboardId);
       return this.formatSuccess(
-        `Pergunta ${params.questionId} adicionada ao dashboard ${params.dashboardId}.`
+        `Dashboard: "${dashboard.result?.dashboard_title}"`,
+        dashboard
       );
     } catch (err: any) {
-      return this.formatError(`Erro ao adicionar ao dashboard: ${err.message}`);
+      return this.formatError(`Erro ao obter dashboard: ${err.message}`);
     }
   }
 }
@@ -254,7 +227,7 @@ export class MetaSetSyncTool extends BaseTool {
 
   async execute(): Promise<ToolResult> {
     try {
-      await metasetClient.syncDatabase();
+      await metasetClient.syncDatabaseSchema(DEFAULT_DATABASE_ID);
       return this.formatSuccess("Schema do banco sincronizado com o motor de BI.");
     } catch (err: any) {
       return this.formatError(`Erro ao sincronizar: ${err.message}`);
@@ -278,5 +251,58 @@ export class MetaSetHealthTool extends BaseTool {
     } catch (err: any) {
       return this.formatError(`Erro ao verificar status: ${err.message}`);
     }
+  }
+}
+
+// Ferramentas legadas (mantidas para compatibilidade, mas redirecionadas)
+export class MetaSetCreateQuestionTool extends BaseTool {
+  name = "metaset.create_question";
+  description = "[LEGADO] Use metaset.create_chart em vez disso. Cria uma pergunta no motor de BI.";
+  category = "bi";
+  parameters: ToolParameter[] = [
+    { name: "name", type: "string", description: "Nome", required: true },
+    { name: "query", type: "string", description: "Consulta SQL", required: true },
+  ];
+
+  async execute(params: Record<string, any>): Promise<ToolResult> {
+    return this.formatSuccess("Use metaset.create_chart para criar visualizações no MetaSet (Apache Superset).");
+  }
+}
+
+export class MetaSetRunQuestionTool extends BaseTool {
+  name = "metaset.run_question";
+  description = "[LEGADO] Use metaset.query em vez disso. Executa uma pergunta salva.";
+  category = "bi";
+  parameters: ToolParameter[] = [
+    { name: "questionId", type: "number", description: "ID", required: true },
+  ];
+
+  async execute(): Promise<ToolResult> {
+    return this.formatSuccess("Use metaset.query para executar consultas SQL diretamente.");
+  }
+}
+
+export class MetaSetListQuestionsTool extends BaseTool {
+  name = "metaset.list_questions";
+  description = "[LEGADO] Use metaset.list_charts em vez disso. Lista perguntas salvas.";
+  category = "bi";
+  parameters: ToolParameter[] = [];
+
+  async execute(): Promise<ToolResult> {
+    return this.formatSuccess("Use metaset.list_charts para listar visualizações no MetaSet.");
+  }
+}
+
+export class MetaSetAddToDashboardTool extends BaseTool {
+  name = "metaset.add_to_dashboard";
+  description = "[LEGADO] Funcionalidade em desenvolvimento para novo MetaSet.";
+  category = "bi";
+  parameters: ToolParameter[] = [
+    { name: "dashboardId", type: "number", description: "ID do dashboard", required: true },
+    { name: "chartId", type: "number", description: "ID do gráfico", required: true },
+  ];
+
+  async execute(): Promise<ToolResult> {
+    return this.formatSuccess("Funcionalidade de adicionar gráficos a dashboards em desenvolvimento para o novo MetaSet.");
   }
 }

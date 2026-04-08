@@ -8,6 +8,7 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { registerUploadRoutes } from "./upload";
 import { registerStagingRoutes } from "./staging";
+import { registerMetaSetRoutes } from "./metaset-client/routes";
 import OpenAI from "openai";
 
 const dataSourceSchema = z.object({
@@ -89,6 +90,7 @@ const SYSTEM_TABLE_CATEGORIES: Record<string, { category: string; description: s
 export function registerBiRoutes(app: Express): void {
   registerUploadRoutes(app);
   registerStagingRoutes(app);
+  registerMetaSetRoutes(app);  // MetaSet (Apache Superset) integration
 
   app.get("/api/bi/internal-tables", async (req: Request, res: Response) => {
     try {
