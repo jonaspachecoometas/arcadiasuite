@@ -5,9 +5,6 @@
  * Substitui o cliente legado Metabase em /server/metaset/client.ts
  */
 
-import { db } from "../../db/index";
-import { sql } from "drizzle-orm";
-
 // Configuração
 const METASET_HOST = process.env.METASET_HOST || "metaset";
 const METASET_PORT = parseInt(process.env.METASET_PORT || "8100", 10);
