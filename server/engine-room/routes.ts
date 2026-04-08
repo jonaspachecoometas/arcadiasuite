@@ -6,33 +6,53 @@
  */
 
 import type { Express, Request, Response } from "express";
+import http from "http";
 
 // Consulta Registry do Kernel para serviços descobertos
+// Usa http.get em vez de fetch por causa de problemas com loopback no Node.js
 async function fetchRegistryServices(): Promise<any[] | null> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3000);
-    
-    // Tenta 127.0.0.1 primeiro (mais confiável que localhost)
-    const response = await fetch('http://127.0.0.1:5001/api/registry/services', {
-      signal: controller.signal,
+  return new Promise((resolve) => {
+    const options = {
+      hostname: '127.0.0.1',
+      port: 5001,
+      path: '/api/registry/services',
+      method: 'GET',
+      timeout: 3000,
+    };
+
+    const req = http.request(options, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const services = json.success && Array.isArray(json.data?.services) ? json.data.services : null;
+          console.log(`[Engine Room] Registry retornou ${services?.length || 0} serviços`);
+          resolve(services);
+        } catch (e) {
+          console.error('[Engine Room] Erro ao parsear resposta:', e);
+          resolve(null);
+        }
+      });
     });
-    
-    clearTimeout(timeout);
-    
-    if (!response.ok) {
-      console.log('[Engine Room] Registry retornou:', response.status);
-      return null;
-    }
-    
-    const data = await response.json();
-    const services = data.success && Array.isArray(data.data?.services) ? data.data.services : null;
-    console.log(`[Engine Room] Registry retornou ${services?.length || 0} serviços`);
-    return services;
-  } catch (error) {
-    console.error('[Engine Room] Erro ao consultar Registry:', error);
-    return null;
-  }
+
+    req.on('error', (error) => {
+      console.error('[Engine Room] Erro ao consultar Registry:', error.message);
+      resolve(null);
+    });
+
+    req.on('timeout', () => {
+      console.error('[Engine Room] Timeout ao consultar Registry');
+      req.destroy();
+      resolve(null);
+    });
+
+    req.end();
+  });
 }
 
 // Converte serviço do Registry para formato EngineStatus
