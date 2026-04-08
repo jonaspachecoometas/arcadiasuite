@@ -26,15 +26,30 @@ async function fetchRegistryServicesWithRetry(maxRetries = 3, delay = 500): Prom
   return null;
 }
 
+// Tenta múltiplos hostnames (127.0.0.1, localhost) para conectar ao Kernel
 async function fetchRegistryServicesOnce(): Promise<any[] | null> {
+  const hostnames = ['127.0.0.1', 'localhost'];
+  
+  for (const hostname of hostnames) {
+    const result = await tryConnectToRegistry(hostname);
+    if (result !== null) {
+      return result;
+    }
+  }
+  return null;
+}
+
+function tryConnectToRegistry(hostname: string): Promise<any[] | null> {
   return new Promise((resolve) => {
     const options = {
-      hostname: 'localhost',
+      hostname,
       port: 5001,
       path: '/api/registry/services',
       method: 'GET',
       timeout: 3000,
     };
+    
+    console.log(`[Engine Room] Tentando conectar em ${hostname}:5001...`);
 
     const req = http.request(options, (res) => {
       let data = '';
@@ -47,22 +62,22 @@ async function fetchRegistryServicesOnce(): Promise<any[] | null> {
         try {
           const json = JSON.parse(data);
           const services = json.success && Array.isArray(json.data?.services) ? json.data.services : null;
-          console.log(`[Engine Room] Registry retornou ${services?.length || 0} serviços`);
+          console.log(`[Engine Room] Registry retornou ${services?.length || 0} serviços via ${hostname}`);
           resolve(services);
         } catch (e) {
-          console.error('[Engine Room] Erro ao parsear resposta:', e);
+          console.error(`[Engine Room] Erro ao parsear resposta de ${hostname}:`, e);
           resolve(null);
         }
       });
     });
 
     req.on('error', (error) => {
-      console.error('[Engine Room] Erro ao consultar Registry:', error.message);
+      console.error(`[Engine Room] Erro ao consultar Registry em ${hostname}:`, error.message);
       resolve(null);
     });
 
     req.on('timeout', () => {
-      console.error('[Engine Room] Timeout ao consultar Registry');
+      console.error(`[Engine Room] Timeout ao consultar Registry em ${hostname}`);
       req.destroy();
       resolve(null);
     });
