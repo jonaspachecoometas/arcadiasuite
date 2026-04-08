@@ -9,3 +9,39 @@ replit.nix
 .cache
 .config
 .upm
+
+# MetaSet - Apache Superset source code (não necessário para build do app principal)
+server/bi/metaset/superset-src/
+server/bi/metaset/venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Logs e dados
+data/
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testes
+.pytest_cache/
+.playwright-mcp/
+coverage/
+
+# Docker
+.docker/
+
+# Outros
+*.md
+docs/
+attached_assets/
