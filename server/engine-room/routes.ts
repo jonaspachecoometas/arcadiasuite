@@ -9,9 +9,23 @@ import type { Express, Request, Response } from "express";
 import http from "http";
 
 // Consulta Registry do Kernel para serviços descobertos
-// Usa http.get em vez de fetch por causa de problemas com loopback no Node.js
-// Implementa retry com backoff para maior resiliência
+// PRIORIDADE 1: Usa Registry global se disponível (mesmo processo)
+// PRIORIDADE 2: Faz HTTP request para porta 5001 (fallback)
 async function fetchRegistryServicesWithRetry(maxRetries = 3, delay = 500): Promise<any[] | null> {
+  // Tenta usar Registry global primeiro (mesmo processo Node.js)
+  const globalRegistry = (global as any).arcadiaKernelRegistry;
+  if (globalRegistry) {
+    try {
+      const services = globalRegistry.getServices();
+      console.log(`[Engine Room] Usando Registry global: ${services.length} serviços`);
+      return services;
+    } catch (error) {
+      console.error('[Engine Room] Erro ao acessar Registry global:', error);
+    }
+  }
+  
+  // Fallback: HTTP request para porta 5001
+  console.log('[Engine Room] Registry global não disponível, tentando HTTP...');
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const result = await fetchRegistryServicesOnce();
     if (result !== null) {

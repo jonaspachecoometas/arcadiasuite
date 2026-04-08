@@ -397,14 +397,21 @@ export function log(message: string, source = "express") {
 
   // Inicia Arcadia Kernel (Dashboard porta 5001) - Semana 3
   // Inicia ANTES do servidor HTTP para garantir que o Registry esteja pronto
+  let kernel: ArcadiaKernel | undefined;
   if (process.env.KERNEL_ENABLED === 'true') {
     try {
-      const kernel = new ArcadiaKernel({
+      kernel = new ArcadiaKernel({
         dashboard: { enabled: true, port: 5001, host: '0.0.0.0' },
         autoStart: process.env.KERNEL_AUTOSTART === 'true',
       });
       await kernel.start();
       log('Arcadia Kernel iniciado em http://0.0.0.0:5001');
+      
+      // Exporta o Registry globalmente para a Casa de Máquinas usar diretamente
+      if (kernel.serviceRegistry) {
+        (global as any).arcadiaKernelRegistry = kernel.serviceRegistry;
+        log('[Kernel] Registry exportado globalmente');
+      }
     } catch (error) {
       log(`Erro ao iniciar Kernel: ${error instanceof Error ? error.message : String(error)}`);
     }
