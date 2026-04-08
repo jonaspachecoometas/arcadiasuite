@@ -170,10 +170,9 @@ export class CoolifyDiscovery implements DiscoveryProvider {
     // Parse custom labels se existirem
     const labels = this.parseLabels(svc.custom_labels);
     
-    // Só registra se tiver o label arcadia.discovery.enabled=true
-    if (labels['arcadia.discovery.enabled'] !== 'true') {
-      return null;
-    }
+    // SIMPLIFICADO: Registra todos os serviços do Coolify
+    // (removido filtro por label arcadia.discovery.enabled)
+    // Os labels podem ser adicionados manualmente depois se necessário
 
     const id = labels['arcadia.id'] || `coolify-service-${svc.uuid}`;
     const name = labels['arcadia.name'] || svc.name;
