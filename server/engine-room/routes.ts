@@ -29,7 +29,7 @@ async function fetchRegistryServicesWithRetry(maxRetries = 3, delay = 500): Prom
 async function fetchRegistryServicesOnce(): Promise<any[] | null> {
   return new Promise((resolve) => {
     const options = {
-      hostname: '127.0.0.1',
+      hostname: 'localhost',
       port: 5001,
       path: '/api/registry/services',
       method: 'GET',
