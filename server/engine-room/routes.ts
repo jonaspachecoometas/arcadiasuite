@@ -166,25 +166,25 @@ export function registerEngineRoomRoutes(app: Express): void {
         const plusHealth = await checkEngineHealth(plusEngine);
         kernelEngines.push({
           ...plusHealth,
-          name: "plus",
-          displayName: "Arcadia Plus (ERP)",
-          type: "php",
-          category: "erp",
-          description: "ERP completo Laravel",
+          name: plusEngine.name,
+          displayName: plusEngine.displayName,
+          type: plusEngine.type,
+          category: plusEngine.category,
+          description: plusEngine.description,
         } as any);
       }
 
-      // Adicionar MetaSet (gerenciado externamente - Java)
+      // Adicionar MetaSet (gerenciado externamente - Python/Superset)
       const metasetEngine = ENGINES.find(e => e.name === "metaset");
       if (metasetEngine) {
         const metasetHealth = await checkEngineHealth(metasetEngine);
         kernelEngines.push({
           ...metasetHealth,
-          name: "metaset",
-          displayName: "MetaSet (Motor BI)",
-          type: "java",
-          category: "data",
-          description: "Motor de BI - Consultas, Dashboards, Gráficos",
+          name: metasetEngine.name,
+          displayName: metasetEngine.displayName,
+          type: metasetEngine.type,
+          category: metasetEngine.category,
+          description: metasetEngine.description,
         } as any);
       }
 
