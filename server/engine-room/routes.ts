@@ -10,6 +10,55 @@ import {
   isKernelAvailable
 } from "./kernel-adapter";
 
+// NOVO: Consulta Registry do Kernel para serviços descobertos
+async function fetchRegistryServices(): Promise<any[] | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+    
+    const response = await fetch('http://localhost:5001/api/registry/services', {
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeout);
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    return data.success && Array.isArray(data.data?.services) ? data.data.services : null;
+  } catch {
+    return null;
+  }
+}
+
+// NOVO: Converte serviço do Registry para formato EngineStatus
+function mapRegistryToEngine(service: any): any {
+  const id = service.id || service.name;
+  
+  // Mapear health status
+  let status: 'online' | 'offline' | 'error' = 'offline';
+  if (service.healthStatus === 'healthy') status = 'online';
+  else if (service.healthStatus === 'unhealthy') status = 'error';
+  
+  return {
+    name: id,
+    displayName: service.displayName || service.name,
+    type: service.type || 'unknown',
+    port: service.port || 0,
+    category: service.category || 'data',
+    description: service.description || `Serviço ${service.name}`,
+    status,
+    responseTime: undefined,
+    details: {
+      endpoint: service.endpoint,
+      health: service.healthStatus,
+      version: service.version,
+      capabilities: service.capabilities?.map((c: any) => c.name) || [],
+      source: 'registry',
+    },
+  };
+}
+
 // Fallback para sistema antigo (import comentado - remover após validação)
 // import { restartManagedService, stopManagedService, getManagedServiceInfo, getManagedServiceLogs } from "../index";
 
@@ -157,35 +206,62 @@ export function registerEngineRoomRoutes(app: Express): void {
         });
       }
 
-      // Obter engines do Kernel
-      const kernelEngines = await getKernelEngines();
+      // NOVO: Tentar obter serviços do Registry primeiro
+      const registryServices = await fetchRegistryServices();
+      const engines: any[] = [];
+      const engineNames = new Set<string>();
       
-      // Adicionar Plus (gerenciado externamente - PHP/Laravel)
-      const plusEngine = ENGINES.find(e => e.name === "plus");
-      if (plusEngine) {
-        const plusHealth = await checkEngineHealth(plusEngine);
-        kernelEngines.push({
-          ...plusHealth,
-          name: plusEngine.name,
-          displayName: plusEngine.displayName,
-          type: plusEngine.type,
-          category: plusEngine.category,
-          description: plusEngine.description,
-        } as any);
+      if (registryServices && registryServices.length > 0) {
+        // Usar serviços do Registry (descobertos via Docker/Coolify)
+        for (const service of registryServices) {
+          const mapped = mapRegistryToEngine(service);
+          engines.push(mapped);
+          engineNames.add(mapped.name);
+        }
+        console.log(`[Engine Room] ${engines.length} serviços do Registry`);
+      } else {
+        // Fallback: usar engines do Kernel (modo antigo)
+        const kernelEngines = await getKernelEngines();
+        engines.push(...kernelEngines);
+        kernelEngines.forEach(e => engineNames.add(e.name));
+        console.log(`[Engine Room] ${engines.length} serviços do Kernel (fallback)`);
+      }
+      
+      // Adicionar serviços externos que não estão no Registry
+      // Plus (gerenciado externamente - PHP/Laravel)
+      if (!engineNames.has("plus")) {
+        const plusEngine = ENGINES.find(e => e.name === "plus");
+        if (plusEngine) {
+          const plusHealth = await checkEngineHealth(plusEngine);
+          engines.push({
+            ...plusHealth,
+            name: plusEngine.name,
+            displayName: plusEngine.displayName,
+            type: plusEngine.type,
+            category: plusEngine.category,
+            description: plusEngine.description,
+          } as any);
+          engineNames.add("plus");
+        }
       }
 
-      // Adicionar MetaSet (gerenciado externamente - Python/Superset)
-      const metasetEngine = ENGINES.find(e => e.name === "metaset");
-      if (metasetEngine) {
-        const metasetHealth = await checkEngineHealth(metasetEngine);
-        kernelEngines.push({
-          ...metasetHealth,
-          name: metasetEngine.name,
-          displayName: metasetEngine.displayName,
-          type: metasetEngine.type,
-          category: metasetEngine.category,
-          description: metasetEngine.description,
-        } as any);
+      // MetaSet (gerenciado externamente - Python/Superset)
+      // Só adiciona se não estiver no Registry e se bi-engine não existir
+      // (evita duplicação de Motor BI)
+      if (!engineNames.has("metaset") && !engineNames.has("bi-engine")) {
+        const metasetEngine = ENGINES.find(e => e.name === "metaset");
+        if (metasetEngine) {
+          const metasetHealth = await checkEngineHealth(metasetEngine);
+          engines.push({
+            ...metasetHealth,
+            name: metasetEngine.name,
+            displayName: metasetEngine.displayName,
+            type: metasetEngine.type,
+            category: metasetEngine.category,
+            description: metasetEngine.description,
+          } as any);
+          engineNames.add("metaset");
+        }
       }
 
       let agentsStatus: any[] = [];
@@ -196,11 +272,11 @@ export function registerEngineRoomRoutes(app: Express): void {
         agentsStatus = [];
       }
 
-      const online = kernelEngines.filter((r) => r.status === "online").length;
-      const total = kernelEngines.length;
+      const online = engines.filter((r) => r.status === "online").length;
+      const total = engines.length;
 
       res.json({
-        engines: kernelEngines,
+        engines,
         agents: agentsStatus,
         summary: {
           total_engines: total,
