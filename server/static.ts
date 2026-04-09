@@ -1,7 +1,6 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
-import compression from "compression";
 
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
@@ -11,29 +10,48 @@ export function serveStatic(app: Express) {
     );
   }
 
-  // Enable gzip compression for static assets
-  // Caddy/Traefik devem respeitar isso ou fazer override
-  app.use(compression({
-    level: 6,
-    threshold: 1024, // Compress files > 1KB
-    filter: (req, res) => {
-      // Don't compress if already compressed by proxy
-      if (req.headers['x-no-compression']) {
-        return false;
+  // Middleware to serve pre-compressed .gz files
+  app.use((req, res, next) => {
+    const acceptEncoding = req.headers["accept-encoding"] || "";
+    
+    // Only handle GET/HEAD requests
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      return next();
+    }
+    
+    // Check if client accepts gzip
+    if (!acceptEncoding.includes("gzip")) {
+      return next();
+    }
+    
+    const url = req.url;
+    // Only handle JS, CSS, and HTML files
+    if (!url.match(/\.(js|css|html?)$/)) {
+      return next();
+    }
+    
+    const gzPath = path.join(distPath, url + ".gz");
+    
+    if (fs.existsSync(gzPath)) {
+      // Set headers for gzip response
+      res.setHeader("Content-Encoding", "gzip");
+      res.setHeader("Vary", "Accept-Encoding");
+      
+      // Set correct content type
+      if (url.endsWith(".js")) {
+        res.setHeader("Content-Type", "application/javascript; charset=UTF-8");
+      } else if (url.endsWith(".css")) {
+        res.setHeader("Content-Type", "text/css; charset=UTF-8");
+      } else if (url.match(/\.html?$/)) {
+        res.setHeader("Content-Type", "text/html; charset=UTF-8");
       }
-      // Compress JS, CSS, JSON, HTML
-      const contentType = res.getHeader('content-type') || '';
-      if (typeof contentType === 'string') {
-        if (contentType.includes('javascript') ||
-            contentType.includes('css') ||
-            contentType.includes('json') ||
-            contentType.includes('html')) {
-          return true;
-        }
-      }
-      return compression.filter(req, res);
-    },
-  }));
+      
+      // Serve the gzipped file
+      return res.sendFile(gzPath);
+    }
+    
+    next();
+  });
 
   // Serve static files with proper caching
   app.use(express.static(distPath, {
