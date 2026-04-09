@@ -1,7 +1,6 @@
 import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
-import compression from "compression";
 
 export function serveStatic(app: Express) {
   const distPath = path.resolve(__dirname, "public");
@@ -11,15 +10,9 @@ export function serveStatic(app: Express) {
     );
   }
 
-  // Enable gzip compression for all responses
-  app.use(compression({
-    level: 6, // balance between speed and compression
-    filter: (req, res) => {
-      // Compress all JSON and static assets
-      if (req.headers['x-no-compression']) return false;
-      return compression.filter(req, res);
-    },
-  }));
+  // NOTA: Gzip é gerenciado pelo Traefik (coolify-proxy)
+  // Não usar middleware compression aqui para evitar conflito
+  // O Traefik já tem: traefik.http.middlewares.gzip.compress=true
 
   // Serve static files with proper caching
   app.use(express.static(distPath, {
