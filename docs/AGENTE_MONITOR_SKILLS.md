@@ -1,3 +1,16 @@
+---
+⚠️ **AVISO: DOCUMENTAÇÃO HISTÓRICA**
+
+Este documento foi criado em **Março/2026** como planejamento estratégico.
+Pode conter informações desatualizadas em relação ao sistema atual.
+
+Para documentação técnica atualizada, consulte:
+- \_SPEC_NAVBAR.md\_ (componentes UI)
+- \_KERNEL_SPEC.md\_ (arquitetura do Kernel)
+- Código-fonte em \_server/modules/\_
+
+---
+
 # Agente: Monitor de Skills
 
 ## Objetivo
